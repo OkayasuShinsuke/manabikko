@@ -131,7 +131,15 @@
     color: var(--gold); -webkit-text-stroke: 3px var(--ink); paint-order: stroke fill;
     text-shadow: 0 6px 0 var(--ink); animation: wobble 3s ease-in-out infinite;
   }
-  .logo small { display: block; font-size: .32em; -webkit-text-stroke: 0; text-shadow: none; color: var(--ink); font-family: var(--body); font-weight: 800; letter-spacing: .1em; }
+  .logo small {
+    display: block; font-size: .32em; -webkit-text-stroke: 0; color: var(--ink);
+    font-family: var(--body); font-weight: 800; letter-spacing: .1em;
+    /* 背景の回転する光や星に埋もれて読みにくかったので、白いハロー(にじみ)を
+       つけて、どんな背景の上でも浮き上がって見えるようにする */
+    text-shadow:
+      0 0 6px #fff, 0 0 6px #fff,
+      1px 1px 0 #fff, -1px -1px 0 #fff, 1px -1px 0 #fff, -1px 1px 0 #fff;
+  }
 
   /* ===== メンダコ（SVG）の動き ===== */
   .tako { width: 76px; height: auto; overflow: visible; flex: none; }
