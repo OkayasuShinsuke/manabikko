@@ -55,6 +55,11 @@
     padding: 4px 12px; font-size: .95rem; display: flex; align-items: center; gap: 6px;
     box-shadow: 0 3px 0 rgba(0,0,0,.35); white-space: nowrap;
   }
+  /* せいかい/ミス/コイン の3つの pill + まる2つ が390px幅でも画面外にはみ出さないように詰める */
+  @media (max-width: 400px) {
+    .hud { gap: 5px; }
+    .hud .pill { padding: 4px 8px; font-size: .84rem; gap: 4px; }
+  }
   .pill b { font-family: var(--display); font-weight: 400; font-size: 1.25rem; font-variant-numeric: tabular-nums; }
   .pill.miss b { color: var(--ng); }
   .pill.coin { margin-left: auto; background: var(--lemon); }
@@ -238,11 +243,11 @@
     border-radius: 18px; padding: 5px;
   }
   .level button {
-    border: 0; border-radius: 12px; padding: 7px 1px; font-size: .64rem; line-height: 1.2;
-    background: transparent; white-space: normal; word-break: keep-all;
+    border: 0; border-radius: 12px; padding: 9px 1px; font-size: .76rem; line-height: 1.25;
+    min-height: 44px; background: transparent; white-space: normal; word-break: keep-all;
   }
   .level button[aria-pressed="true"] { background: var(--ink); color: var(--gold); }
-  @media (max-width: 400px) { .level button { font-size: .58rem; padding: 6px 1px; } }
+  @media (max-width: 400px) { .level button { font-size: .68rem; padding: 8px 1px; min-height: 42px; } }
   .menu { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
   .menu .key { min-height: 96px; gap: 0; font-family: var(--body); font-weight: 800; font-size: 1.15rem; line-height: 1.2; }
   .menu .key .e { font-size: 2.4rem; line-height: 1.1; display: block; }
@@ -458,7 +463,7 @@
     <div class="hud">
       <h1>あそんで まなぼう</h1>
       <span class="pill coin">🐚 <b class="coinNum">0</b></span>
-      <button class="round" id="soundBtn" aria-label="おと オン/オフ">🐬</button>
+      <button class="round" id="soundBtn" aria-label="おと オン/オフ">🔊</button>
       <button class="round" id="transferBtn" aria-label="ひきつぎコード">🐢</button>
     </div>
     <div class="stage tall" data-stage>
@@ -1348,6 +1353,7 @@ function renderHud() {
   document.querySelectorAll(".coinNum").forEach((el) => (el.textContent = state.coins));
   $("bookCount").textContent = `${state.stickers.length}まい`;
   $("soundBtn").classList.toggle("muted", !state.sound);
+  $("soundBtn").textContent = state.sound ? "🔊" : "🔇";
   LEVELS.forEach((_, i) => { const b = $("lv" + (i + 1)); if (b) b.setAttribute("aria-pressed", state.levelIdx === i + 1); });
   updateGameVisibility();
   const shopPill = $("shopStickerPill");
