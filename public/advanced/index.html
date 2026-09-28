@@ -178,6 +178,16 @@
   .qcounter { font-family: var(--mono); font-size: .78rem; color: var(--ink-dim); }
   .qbody { font-size: 1.05rem; line-height: 1.9; }
   .qbody .katex { font-size: 1.06em; }
+  /* KaTeX本体のCSS(外部スタイルシート)が読み込めない環境(claude.aiの
+     Artifactプレビュー等、CSPで外部CSSがブロックされる場所)では、KaTeXの
+     JS自体は動くので数式は組版されるが、本来CSSで非表示にしているはずの
+     読み上げ用の元テキスト(katex-mathml、アクセシビリティ用の注釈)が
+     画面に見えてしまい、数式の直後に生のテキストが重複して表示される。
+     外部CSSに頼らず、ここで確実に隠す。 */
+  .katex-mathml {
+    position: absolute !important; clip: rect(0 0 0 0) !important; clip-path: inset(50%) !important;
+    width: 1px !important; height: 1px !important; overflow: hidden !important; white-space: nowrap !important;
+  }
   .given { margin-top: 4px; font-size: .92rem; color: var(--ink-dim); line-height: 1.7; }
   .given .katex { font-size: 1em; }
 
