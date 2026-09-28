@@ -3,6 +3,12 @@
 15分ごとに自動で起きるループが、会話の記憶に頼らず「次に何をするか」を判断するための
 しおりです。ループの1周ごとに、必ずこのファイルを読んでから作業し、最後に更新してください。
 
+> **2026-09-28: リポジトリを移動しました。** それまでは`Oka`リポジトリ（翻訳アプリと
+> 混在）で開発していましたが、専用の新しいリポジトリ `OkayasuShinsuke/manabikko`
+> （作業ディレクトリ `/home/user/manabikko`、ブランチ `main`）に移行しました。
+> このファイルより前のログにある `/home/user/Oka` や
+> `claude/kids-learning-app-95o37w` は移行前の記録なので、今後は無視してよい。
+
 ## 最優先の判断基準（すべてのタスクに適用）
 
 どのタスクをやるときも、最後にこの3つで自己採点してから終わること。
@@ -180,7 +186,8 @@
   1タスク=1依頼で渡す。
 - 実装後は Playwright で1回だけスクリーンショット確認（`/tmp/.../scratchpad/` に保存）。
   ループを組んで何度も自己チェックしない。
-- 確認できたら `git add -A && git commit && git push origin claude/kids-learning-app-95o37w`。
+- 確認できたら `git add -A && git commit && git push origin main`（リポジトリは
+  `OkayasuShinsuke/manabikko`、作業ディレクトリは `/home/user/manabikko`）。
 - 最後に、この STATUS.md の該当項目にチェックを入れ、次回への申し送りを
   「## 直近のログ」に1〜3行で追記する。
 
