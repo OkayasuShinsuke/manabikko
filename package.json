@@ -1,0 +1,12 @@
+{
+  "name": "manabikko",
+  "version": "1.0.0",
+  "description": "まなびっこ（幼児〜小3向け学習ゲーム）と、電磁気学・東大数学レベルの学習アプリ",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2"
+  }
+}
