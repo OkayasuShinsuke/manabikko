@@ -101,6 +101,10 @@
   .stat b { color: var(--ink); font-weight: 700; font-size: .95rem; }
   .stat.xp b { color: var(--accent-3); }
   .stat.streak b { color: var(--accent-2); }
+  /* 今日の目標（今日はあと◯問）：達成時だけ控えめに色が変わる（派手な演出はしない） */
+  .stat.goal b { color: var(--ink); }
+  .stat.goal.done { color: var(--accent); }
+  .stat.goal.done b { color: var(--accent); }
   .iconbtn {
     width: 34px; height: 34px; display: grid; place-items: center; border-radius: 8px;
     border: 1px solid var(--line); background: var(--panel); flex: none; font-size: 1rem;
@@ -149,6 +153,11 @@
   }
   .unitRow .stat-badge.hasdata { color: var(--accent); border: 1px solid var(--line); }
   .dueDot { display: inline-block; margin-left: 6px; color: var(--accent-2); font-size: .6em; vertical-align: middle; }
+  /* 苦手単元の可視化：直近の自己採点正答率を細いバーで表示（dueDotとは別の行なので重ならない） */
+  .masteryRow { display: flex; align-items: center; gap: 6px; margin-top: 5px; }
+  .masteryBar { flex: 1; height: 4px; border-radius: 2px; background: var(--panel-2); overflow: hidden; }
+  .masteryBar > i { display: block; height: 100%; background: var(--accent-3); border-radius: 2px; }
+  .masteryPct { font-family: var(--mono); font-size: .68rem; color: var(--ink-dim); flex: none; }
 
   .backRow { display: flex; align-items: center; gap: 10px; margin-bottom: 4px; }
   .backBtn {
@@ -254,6 +263,7 @@
     <div class="brand"><span class="mark">&gt;_</span><h1 id="hudTitle">Advanced Lab</h1></div>
     <span class="stat streak" title="連続学習日数">🔥<b id="streakNum">0</b></span>
     <span class="stat xp" title="経験値">XP<b id="xpNum">0</b></span>
+    <span class="stat goal" id="goalStat" title="今日の目標">🎯<b id="goalNum">0</b><span id="goalUnit">問</span></span>
     <button class="iconbtn" id="themeBtn" aria-label="テーマ切替" title="テーマ切替">🌓</button>
     <button class="iconbtn" id="soundBtn" aria-label="音のオン/オフ" title="音のオン/オフ">🔔</button>
   </header>
@@ -392,7 +402,11 @@ const state = {
   // 変わり個別インスタンスを再現できないため、トピック単位で「また出す」を管理する）、
   // 数学=`math:<problemId>`（バンクの問題IDは固定なので問題単位で管理できる）。
   srs: store.get("adv.srs", {}),
+  // 今日の目標（やる気の継続）: その日に自己採点した問題数（できた/できなかった両方カウント）。
+  // date が今日と違えば起動時にリセットする（ローカル日付基準）。
+  daily: store.get("adv.daily", { date: todayStr(), count: 0 }),
 };
+const DAILY_GOAL_TARGET = 5; // 「今日はあと◯問」の固定目標（設定UIは持たない）
 if (state.theme) document.documentElement.setAttribute("data-theme", state.theme);
 
 function saveState() {
@@ -401,6 +415,16 @@ function saveState() {
   store.set("adv.lastStudyDay", state.lastStudyDay);
   store.set("adv.history", state.history);
   store.set("adv.srs", state.srs);
+  store.set("adv.daily", state.daily);
+}
+
+// 日付が変わっていたら「今日の目標」カウンタをリセットする（ローカル深夜基準）
+function ensureDailyFresh() {
+  const today = todayStr();
+  if (state.daily.date !== today) {
+    state.daily = { date: today, count: 0 };
+    saveState();
+  }
 }
 
 function bumpStreakIfNewDay() {
@@ -429,6 +453,26 @@ function recordAttempt(problemId, correct) {
 function renderHud() {
   $("xpNum").textContent = state.xp;
   $("streakNum").textContent = state.streak;
+  renderGoal();
+}
+
+// 今日の目標（今日はあと◯問）の表示更新。達成時は控えめにチェック表示へ切り替える
+// だけで、派手な演出（紙吹雪など）はしない。
+function renderGoal() {
+  ensureDailyFresh();
+  const goalStat = $("goalStat");
+  const remaining = Math.max(0, DAILY_GOAL_TARGET - state.daily.count);
+  const done = remaining === 0;
+  goalStat.classList.toggle("done", done);
+  if (done) {
+    $("goalNum").textContent = "✓";
+    $("goalUnit").textContent = "達成";
+    goalStat.title = `今日の目標を達成しました（${state.daily.count}問 自己採点）`;
+  } else {
+    $("goalNum").textContent = remaining;
+    $("goalUnit").textContent = "問";
+    goalStat.title = `今日はあと${remaining}問（${state.daily.count}/${DAILY_GOAL_TARGET}問 自己採点済み）`;
+  }
 }
 
 // ============================================================
@@ -1951,6 +1995,18 @@ function unitStatsFor(problemIdPrefix) {
   return { total: rows.length, correct };
 }
 
+// 苦手単元の可視化：state.history から求めた正答率を細いバーで表示するHTML片を作る。
+// データが無い単元（未挑戦）は何も表示しない（未挑戦を「苦手」として煽らないため）。
+// dueDot（●）は単元名の右横、このバーはその下の行なので視覚的に重ならない。
+function masteryRowHtml(st) {
+  if (!st) return "";
+  const pct = Math.round((st.correct / st.total) * 100);
+  return `<span class="masteryRow" title="自己採点の正答率（直近の履歴: ${st.correct}/${st.total}）">
+    <span class="masteryBar"><i style="width:${pct}%"></i></span>
+    <span class="masteryPct">${pct}%</span>
+  </span>`;
+}
+
 function openUnits(subjectKey) {
   session.subject = subjectKey;
   const subj = SUBJECTS[subjectKey];
@@ -1965,10 +2021,11 @@ function openUnits(subjectKey) {
       const st = unitStatsFor(`em:${key}:`);
       const badge = st ? `${st.correct}/${st.total} できた` : "未挑戦";
       const due = srsIsDue(emSrsKey(key));
+      const masteryRow = masteryRowHtml(st);
       const row = document.createElement("button");
       row.className = "unitRow";
       row.innerHTML = `<span class="idx">${String(i + 1).padStart(2, "0")}</span>
-        <span class="body"><span class="name">${topic.name}${due ? '<span class="dueDot" title="復習の時期です">●</span>' : ""}</span><span class="meta">${topic.meta}</span></span>
+        <span class="body"><span class="name">${topic.name}${due ? '<span class="dueDot" title="復習の時期です">●</span>' : ""}</span><span class="meta">${topic.meta}</span>${masteryRow}</span>
         <span class="stat-badge${st ? " hasdata" : ""}">${badge}</span>`;
       row.addEventListener("click", () => startGeneratorProblem(key));
       list.appendChild(row);
@@ -1982,10 +2039,11 @@ function openUnits(subjectKey) {
       const st = unitStatsFor(`math:${unitName}:`);
       const badge = st ? `${st.correct}/${st.total} できた` : `全${problems.length}問`;
       const due = problems.some((p) => srsIsDue(mathSrsKey(p.id)));
+      const masteryRow = masteryRowHtml(st);
       const row = document.createElement("button");
       row.className = "unitRow";
       row.innerHTML = `<span class="idx">${String(i + 1).padStart(2, "0")}</span>
-        <span class="body"><span class="name">${unitName}${due ? '<span class="dueDot" title="復習の時期です">●</span>' : ""}</span><span class="meta">${problems[0].meta}</span></span>
+        <span class="body"><span class="name">${unitName}${due ? '<span class="dueDot" title="復習の時期です">●</span>' : ""}</span><span class="meta">${problems[0].meta}</span>${masteryRow}</span>
         <span class="stat-badge${st ? " hasdata" : ""}">${badge}</span>`;
       row.addEventListener("click", () => startBankProblem(unitName));
       list.appendChild(row);
@@ -2142,6 +2200,10 @@ function selfGrade(good) {
   recordAttempt(session.problemId, good);
   if (session.srsKey) srsUpdate(session.srsKey, good);
   bumpStreakIfNewDay();
+  // 今日の目標カウンタ：できた/できなかったどちらも「今日取り組んだ」としてカウントする
+  ensureDailyFresh();
+  state.daily.count += 1;
+  saveState();
   if (good) {
     addXp(10);
     $("xpToast").hidden = false;
@@ -2151,6 +2213,7 @@ function selfGrade(good) {
     $("xpToast").hidden = false;
     $("xpToast").textContent = "+2 XP（この問題はまた出題されます）";
   }
+  renderGoal();
 }
 
 // ============================================================
