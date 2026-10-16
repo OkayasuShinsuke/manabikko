@@ -100,6 +100,16 @@
   }
   .stage.fever .rays { animation: spin 3s linear infinite, hue 1.2s linear infinite; }
   .stage.fever .glow { animation: flash .5s steps(2) infinite; }
+  /* ===== せいかい時の ステージの ふるえ（タスク13: 演出強化） =====
+     コンボの だんかいに あわせて、ふるえの おおきさを 3段階に 分ける。 */
+  .stage.okshake { animation: correctShake .3s ease-in-out; }
+  .stage.comboShake { animation: comboShake .4s ease-in-out; }
+  .stage.feverShake { animation: feverShake .5s ease-in-out; }
+  .stage.perfectRing::before {
+    content: ""; position: absolute; inset: -14%; z-index: 3; border-radius: 50%;
+    background: radial-gradient(circle, rgba(255,255,255,.95), rgba(255,230,120,.5) 45%, transparent 72%);
+    animation: ringpulse .9s ease-out; pointer-events: none;
+  }
   .bunting {
     position: absolute; top: 6px; left: -4px; right: -4px; z-index: 1;
     display: flex; justify-content: space-between;
@@ -166,6 +176,8 @@
   .tako.jump { animation: jump .7s ease-out; }
   .tako.jump2 { animation: jump .7s ease-out .12s; }
   .tako.sad { animation: droop 1s ease-in-out; }
+  /* パーフェクト専用：ヒーローが おおきく ジャンプ＆回転する（タスク13: 演出強化） */
+  .tako.superjump { animation: superjump 1.1s cubic-bezier(.3, 1.6, .4, 1); }
   .tako.hero { cursor: pointer; }
 
   /* ===== もんだいカード（電飾のわく） ===== */
@@ -342,6 +354,31 @@
   @keyframes popin { from { transform: scale(0); } }
   @keyframes bump { 40% { transform: scale(1.2); } }
   @keyframes shake { 25% { transform: translateX(-9px); } 75% { transform: translateX(9px); } }
+  /* ===== タスク13: 正解・パーフェクト演出の 強化用キーフレーム ===== */
+  @keyframes correctShake {
+    20% { transform: translate(-4px, -1px) rotate(-.6deg); } 50% { transform: translate(4px, 1px) rotate(.6deg); }
+    80% { transform: translate(-2px, 0) rotate(-.3deg); } 100% { transform: translate(0, 0) rotate(0); }
+  }
+  @keyframes comboShake {
+    15% { transform: translate(-7px, -2px) rotate(-1.2deg) scale(1.01); } 40% { transform: translate(7px, 2px) rotate(1.2deg) scale(1.01); }
+    65% { transform: translate(-5px, 1px) rotate(-.8deg); } 85% { transform: translate(4px, -1px) rotate(.6deg); }
+    100% { transform: translate(0, 0) rotate(0) scale(1); }
+  }
+  @keyframes feverShake {
+    10% { transform: translate(-11px, -4px) rotate(-2.2deg) scale(1.03); } 30% { transform: translate(11px, 4px) rotate(2.2deg) scale(1.03); }
+    50% { transform: translate(-9px, 3px) rotate(-1.6deg) scale(1.02); } 70% { transform: translate(8px, -3px) rotate(1.4deg); }
+    88% { transform: translate(-4px, 2px) rotate(-.6deg); } 100% { transform: translate(0, 0) rotate(0) scale(1); }
+  }
+  @keyframes superjump {
+    0% { transform: translateY(0) scale(1.14, .86) rotate(0); }
+    28% { transform: translateY(-78px) scale(.88, 1.16) rotate(-14deg); }
+    55% { transform: translateY(-82px) scale(1.04, .98) rotate(16deg); }
+    78% { transform: translateY(0) scale(1.18, .82) rotate(-6deg); }
+    100% { transform: translateY(0) scale(1) rotate(0); }
+  }
+  @keyframes ringpulse {
+    0% { transform: scale(.3); opacity: .9; } 100% { transform: scale(1.8); opacity: 0; }
+  }
   @keyframes spin-in { from { transform: scale(.2) rotate(-240deg); } }
   @keyframes floatup { from { opacity: 1; } to { opacity: 0; transform: translate(-50%, -160%) scale(1.3); } }
   /* ===== うみ の 背景（ページ全体・つねに うごく） ===== */
@@ -899,7 +936,7 @@ function fxResize() {
 }
 addEventListener("resize", fxResize); fxResize();
 
-const FX_COLORS = ["#FF5C8A", "#FFD23F", "#3D6BFF", "#2FB36B", "#A98BFF", "#FF9F43"];
+const FX_COLORS = ["#FF5C8A", "#FFD23F", "#3D6BFF", "#2FB36B", "#A98BFF", "#FF9F43", "#00C8E0", "#FF4D6D"];
 function spawn(p) { fx.parts.push(p); if (!fx.on) { fx.on = true; requestAnimationFrame(fxLoop); } }
 
 function burst(x, y, n = 18) {
@@ -923,14 +960,18 @@ function hearts(x, y, n = 6) {
     });
   }
 }
-function confetti(n = 60) {
+// big(パーフェクト時)は、紙ふぶきの しゅるい・いろの バリエーションを さらに ふやす
+function confetti(n = 60, big = false) {
   if (reduced) n = 12;
+  const types = big
+    ? ["paper", "paper", "star", "star", "coin", "coin", "spark", "ring"]
+    : ["paper", "paper", "star", "coin"];
   for (let i = 0; i < n; i++) {
     spawn({
-      type: pick(["paper", "paper", "star", "coin"]),
+      type: pick(types),
       x: Math.random() * innerWidth, y: -20 - Math.random() * innerHeight * 0.6,
-      vx: (Math.random() - 0.5) * 2, vy: 2 + Math.random() * 3, g: 0.03,
-      r: 6 + Math.random() * 6, a: Math.random() * 6, va: 0.1 + Math.random() * 0.2,
+      vx: (Math.random() - 0.5) * (big ? 3 : 2), vy: 2 + Math.random() * (big ? 3.6 : 3), g: 0.03,
+      r: (big ? 7 : 6) + Math.random() * 6, a: Math.random() * 6, va: 0.1 + Math.random() * 0.2,
       life: 220, color: pick(FX_COLORS),
     });
   }
@@ -987,6 +1028,10 @@ function fxLoop() {
     } else if (p.type === "bubble") {
       c.beginPath(); c.arc(0, 0, p.r * 0.5, 0, Math.PI * 2);
       c.strokeStyle = "rgba(255,255,255,.8)"; c.lineWidth = 1.6; c.stroke();
+    } else if (p.type === "ring") {
+      // パーフェクト専用：ひろがって きえる きらきらリング（タスク13: 演出強化）
+      c.globalAlpha *= 0.7; c.lineWidth = 2.5; c.strokeStyle = p.color;
+      c.beginPath(); c.arc(0, 0, p.r + p.a * 3.2, 0, Math.PI * 2); c.stroke();
     } else {
       c.rotate(p.a); c.scale(1, Math.cos(p.a * 1.3)); c.fillStyle = p.color; c.fillRect(-p.r / 2, -p.r / 4, p.r, p.r / 2);
     }
@@ -1905,6 +1950,13 @@ function judge(ok, btn) {
     sfx.riser(); sfx.ok(); sfx.coin();
     bumpCoins();
     mood(stage, "happy", true);
+    // 正解の たびに ステージが ふるえる。コンボが あがるほど ふるえが おおきくなる
+    // （タスク13: 演出強化。採点ロジックには えいきょうしない、見た目だけの演出）。
+    if (!reduced) {
+      stage.classList.remove("okshake", "comboShake", "feverShake");
+      void stage.offsetWidth;
+      stage.classList.add(fever ? "feverShake" : game.combo === 2 ? "comboShake" : "okshake");
+    }
     if (game.combo === 3) { stage.classList.add("fever"); sfx.fever(); }
     else if (game.combo === 2) { sfx.comboPing(); }
     banner(stage, fever ? "フィーバー！" : game.combo === 2 ? "2れんぞく！" : pick(["せいかい！", "すごい！", "やったね！"]), fever);
@@ -1936,8 +1988,21 @@ function finish() {
   show("result");
   renderHud();
   stage.classList.toggle("fever", perfect);
-  setTimeout(() => { banner(stage, perfect ? "パーフェクト！" : "クリア！", perfect); mood(stage, "happy", true); }, 100);
-  confetti(perfect ? 90 : 50);
+  setTimeout(() => {
+    banner(stage, perfect ? "パーフェクト！" : "クリア！", perfect);
+    mood(stage, "happy", true);
+    // パーフェクト限定：ヒーローが おおきく ジャンプ＆回転 + ひろがる リング光
+    // （タスク13: 演出強化。既存の判定(finish()のperfect算出)は 変更しない）。
+    if (perfect && !reduced) {
+      stage.classList.remove("perfectRing"); void stage.offsetWidth; stage.classList.add("perfectRing");
+      const hero = stage.querySelectorAll(".tako")[1];
+      if (hero) {
+        hero.classList.remove("superjump"); void hero.offsetWidth; hero.classList.add("superjump");
+        setTimeout(() => hero.classList.remove("superjump"), 1300);
+      }
+    }
+  }, 100);
+  confetti(perfect ? 90 : 50, perfect);
   perfect ? sfx.perfect() : sfx.fanfare();
   speak(perfect ? "パーフェクト！ すごーい！ シールを どうぞ！" : "よく がんばったね！ シールを どうぞ！", "praise");
 }
