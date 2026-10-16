@@ -471,6 +471,25 @@
   .food-btn.ng { opacity: .5; pointer-events: none; }
   .flying-food { position: fixed; z-index: 70; font-size: 1.8rem; pointer-events: none; transition: left .7s cubic-bezier(.3,.6,.3,1), top .7s cubic-bezier(.3,.6,.3,1), transform .7s, opacity .7s; }
 
+  /* ===== スライドパズル：クリックのみ(ドラッグなし)の 15パズルふう =====
+     タイルは 1枚の えがら(SVG)を かくれんぼさせる標準テク：各タイルを
+     overflow:hidden の はこ にして、中に ぜんたい絵の コピーを
+     left/top で ずらして おき、そのいちぶだけが 見えるようにする。 */
+  .pzboard { display: flex; justify-content: center; }
+  .pzgrid {
+    position: relative; display: grid; gap: 3px; background: var(--ink);
+    border: 3px solid var(--ink); border-radius: 16px; padding: 3px; box-sizing: content-box;
+  }
+  .pztile {
+    position: relative; overflow: hidden; border: 0; border-radius: 9px; padding: 0;
+    background: var(--paper); cursor: pointer; transition: transform .12s;
+  }
+  .pztile:active:not(.blank) { transform: scale(.95); }
+  .pztile.blank { background: #F5F6FC; border: 2px dashed #C6CBE3; cursor: default; }
+  .pztile.nope { animation: shake .25s; }
+  .pztile-inner { position: absolute; display: block; pointer-events: none; }
+  .pztile-inner .tako * { animation: none !important; }
+
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; }
   }
@@ -508,6 +527,7 @@
       <button class="key k3" data-game="clock" data-minlv="5"><span><span class="e">🐡</span>とけい<small>なんじ なんぷん</small></span></button>
       <button class="key k1" data-game="map" data-minlv="3"><span><span class="e">🗾</span>ちず<small>どこの ちほう？</small></span></button>
       <button class="key k1" id="bookBtn"><span><span class="e">🐋</span>シールちょう<small id="bookCount">0まい</small></span></button>
+      <button class="key k3" id="puzzleBtn"><span><span class="e">🧩</span>パズル<small>メンちゃんを そろえよう</small></span></button>
     </div>
     <p class="note">おうちの かたへ：もんだいは こえで よみあげます。iPhone は マナーモードを かいじょ して ください。<br>メンちゃんを タッチすると おはなし するよ。<br>（PCで VOICEVOX を起動していると、よりなめらかな音声で読み上げます。未起動でも自動でブラウザの読み上げに切り替わります）<br><small>おんせい: VOICEVOX:ずんだもん</small></p>
   </section>
@@ -622,6 +642,28 @@
           <button class="key k1" id="restoreYesBtn">はい、ふくげんする</button>
           <button class="key k2" id="restoreNoBtn">やめる</button>
         </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== パズル ===== -->
+  <section id="puzzle" hidden>
+    <div class="hud">
+      <button class="round" id="puzzleBack" aria-label="ホームへ もどる">🐳</button>
+      <h1>パズル</h1>
+      <span class="pill coin">🐚 <b class="coinNum">0</b></span>
+    </div>
+    <div class="stage" data-stage></div>
+    <div class="pzboard"><div class="pzgrid" id="puzzleGrid"></div></div>
+    <p class="note">あいている マスの となりの ピースを タップすると スライドするよ。メンちゃんの えを ぜんぶ そろえよう！</p>
+    <div class="panel" id="puzzleResultBox" hidden>
+      <div class="earn">
+        <div class="prize">🧩</div>
+        <div id="puzzleResultEarn"></div>
+      </div>
+      <div class="row">
+        <button class="key k1" id="puzzleAgainBtn">もういっかい</button>
+        <button class="key k2" id="puzzleHomeBtn">ホーム</button>
       </div>
     </div>
   </section>
@@ -1195,6 +1237,118 @@ function japanMapSvg() {
 }
 
 // ============================================================
+//  スライドパズル（クリックのみ。ドラッグは いっさい つかわない）
+//  絵がらは tako() の SVG を そのまま つかう。タイルは「1枚の 絵の コピーを
+//  タイルの はこ(overflow:hidden)の中で ずらして おく」標準テクで つくる
+//  （ラスター画像・canvas書き出しは つかわず、SVG＋CSSだけで かんせい）。
+//  Lv1〜2は 2×2(3ピース)、Lv3以降は 3×3(8ピース)。(docs/dev-loop/STATUS.md タスク10)
+// ============================================================
+const PZ_BOARD_W = 300, PZ_BOARD_H = Math.round(300 * 104 / 120); // tako()のviewBox比率(120:104)にあわせる
+let pz = null; // { n, tiles, blank, locked }
+
+function pzSolved(n) { return Array.from({ length: n * n }, (_, i) => i); }
+function pzNeighbors(pos, n) {
+  const r = Math.floor(pos / n), c = pos % n, res = [];
+  if (r > 0) res.push(pos - n);
+  if (r < n - 1) res.push(pos + n);
+  if (c > 0) res.push(pos - 1);
+  if (c < n - 1) res.push(pos + 1);
+  return res;
+}
+// ランダムな なら べ替え(1/2の かくりつで 解けない)は つかわず、正解の ならびから
+// 「有効な スライド移動」だけを 何回も くりかえして シャッフルする。この やりかたなら
+// どんなに シャッフルしても かならず 解ける じょうたいに なる(15パズルの 定石)。
+function pzShuffle(n) {
+  const tiles = pzSolved(n);
+  let blank = n * n - 1;
+  let lastBlank = -1;
+  const moves = n === 2 ? 40 : 160;
+  for (let i = 0; i < moves; i++) {
+    const options = pzNeighbors(blank, n).filter((p) => p !== lastBlank);
+    const next = pick(options.length ? options : pzNeighbors(blank, n));
+    [tiles[blank], tiles[next]] = [tiles[next], tiles[blank]];
+    lastBlank = blank;
+    blank = next;
+  }
+  return { tiles, blank };
+}
+function pzColor() {
+  const item = ITEMS.find((i) => i.id === state.equip.color);
+  return (item && item.color) || "#FF8FA3";
+}
+// tako()が かえす <svg> ぜんたいを、パズルの ばん(PZ_BOARD_W×PZ_BOARD_H)の
+// サイズに ひきのばして つかう「元絵」。けしょうアニメ(bob/ear/blink)は
+// タイルごとに ずれて 見えると こわれて見えるので CSSで 止める。
+function pzSourceSvg() {
+  const raw = tako(pzColor(), "pzsrc");
+  return raw.replace('<svg class="tako pzsrc"', `<svg class="tako pzsrc" style="width:${PZ_BOARD_W}px;height:${PZ_BOARD_H}px;display:block"`);
+}
+function openPuzzle() {
+  const n = state.levelIdx <= 2 ? 2 : 3;
+  let shuffled;
+  do { shuffled = pzShuffle(n); } while (shuffled.tiles.every((v, i) => v === i));
+  pz = { n, tiles: shuffled.tiles, blank: shuffled.blank, locked: false };
+  $("puzzleResultBox").hidden = true;
+  show("puzzle");
+  renderHud();
+  renderPuzzle();
+  speak("メンちゃんの えを そろえよう！");
+}
+function renderPuzzle() {
+  const n = pz.n, grid = $("puzzleGrid");
+  const tileW = PZ_BOARD_W / n, tileH = PZ_BOARD_H / n;
+  grid.style.gridTemplateColumns = `repeat(${n}, 1fr)`;
+  grid.style.width = PZ_BOARD_W + "px";
+  grid.style.height = PZ_BOARD_H + "px";
+  grid.innerHTML = pz.tiles.map((id, pos) => {
+    if (id === n * n - 1) return `<button class="pztile blank" data-pos="${pos}" aria-label="あきマス"></button>`;
+    const r0 = Math.floor(id / n), c0 = id % n;
+    return `<button class="pztile" data-pos="${pos}" aria-label="ピース" style="width:${tileW}px;height:${tileH}px">
+      <span class="pztile-inner" style="width:${PZ_BOARD_W}px;height:${PZ_BOARD_H}px;left:${(-c0 * tileW).toFixed(2)}px;top:${(-r0 * tileH).toFixed(2)}px">${pzSourceSvg()}</span>
+    </button>`;
+  }).join("");
+  grid.querySelectorAll(".pztile").forEach((btn) => {
+    btn.addEventListener("click", () => pzClickTile(parseInt(btn.dataset.pos, 10)));
+  });
+}
+function pzClickTile(pos) {
+  if (!pz || pz.locked) return;
+  if (!pzNeighbors(pos, pz.n).includes(pz.blank)) {
+    const btn = $("puzzleGrid").querySelector(`[data-pos="${pos}"]`);
+    if (btn && !btn.classList.contains("blank")) {
+      btn.classList.remove("nope"); void btn.offsetWidth; btn.classList.add("nope");
+    }
+    return; // あきマスに隣接していないピースをタップしても 何も おこらない
+  }
+  sfx.tap();
+  [pz.tiles[pos], pz.tiles[pz.blank]] = [pz.tiles[pz.blank], pz.tiles[pos]];
+  pz.blank = pos;
+  renderPuzzle();
+  if (pz.tiles.every((v, i) => v === i)) pzFinish();
+}
+// クリア演出：既存の クイズクリア(finish())と 同じ えんしゅつ パーツ
+// (sfx.perfect/confetti/banner/mood/burst/floatText)を そのまま 再利用する。
+// コインは 1ラウンド(5問・最大15こいかじょう)より すくない、ひかえめな りょう。
+function pzFinish() {
+  pz.locked = true;
+  const gain = pz.n === 2 ? 4 : 8;
+  state.coins += gain; store.set("mk.coins", state.coins);
+  const stage = $("puzzle").querySelector(".stage");
+  const [x, y] = centerOf($("puzzleGrid"));
+  burst(x, y, 44);
+  floatText(x, y - 20, `+${gain}`);
+  confetti(70);
+  sfx.perfect();
+  banner(stage, "できた！", true);
+  mood(stage, "happy", true);
+  speak("メンちゃんの えが そろったよ！ すごい！", "praise");
+  renderHud();
+  bumpCoins();
+  $("puzzleResultEarn").innerHTML = `できた！<br>🐚 +${gain}`;
+  $("puzzleResultBox").hidden = false;
+}
+
+// ============================================================
 //  レベルの ていぎ（あとで Lv4・Lv5 を ついかしやすいよう配列にしておく）
 //   carry:  たしざんで くり上がり（1けたどうしの わの けたが 9をこえる）を まぜる
 //   borrow: ひきざんで くり下がり（じゅうのくらいを こえて かりる）を まぜる
@@ -1381,7 +1535,7 @@ const GAMES = {
 //  がめんの きりかえ と HUD
 // ============================================================
 function show(id) {
-  ["home", "game", "result", "book", "shop", "feed", "transfer"].forEach((s) => ($(s).hidden = s !== id));
+  ["home", "game", "result", "book", "shop", "feed", "transfer", "puzzle"].forEach((s) => ($(s).hidden = s !== id));
   if (id === "home") updateHungryBubble();
   if (id === "shop") renderShop();
   if (id === "feed") renderFoods();
@@ -1807,6 +1961,10 @@ $("feedBtn").addEventListener("click", () => { sfx.tap(); show("feed"); });
 $("shopBtn").addEventListener("click", () => { sfx.tap(); show("shop"); });
 $("feedBack").addEventListener("click", () => show("home"));
 $("shopBack").addEventListener("click", () => show("home"));
+$("puzzleBtn").addEventListener("click", () => { sfx.tap(); openPuzzle(); });
+$("puzzleBack").addEventListener("click", () => { if ("speechSynthesis" in window) { speechSynthesis.cancel(); stopSpeakQueue(); } show("home"); });
+$("puzzleAgainBtn").addEventListener("click", () => { sfx.tap(); openPuzzle(); });
+$("puzzleHomeBtn").addEventListener("click", () => { sfx.tap(); show("home"); });
 
 // ---------- ひきつぎコード（複数端末セーブ転送） ----------
 // 注意: claude.ai の Artifact プレビューからは本物のサーバーに繋がらないため、
