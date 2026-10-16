@@ -162,6 +162,15 @@
   .tako.hero { width: 118px; }
   .stage.tall .tako { width: 96px; }
   .stage.tall .tako.hero { width: 150px; }
+  /* なかよし度が あがって おともだちが 3びき・4びき に ふえたときは、
+     せまい がめんでも おさまるように すこし ちいさく する（タスク14）。
+     gap も いっしょに せまくして、390px はばの スマホでも はみ出さないようにする */
+  .crew[data-n="3"] { gap: 2%; }
+  .crew[data-n="3"] .tako:not(.hero) { width: 54px; }
+  .crew[data-n="3"] .tako.hero { width: 92px; }
+  .crew[data-n="4"] { gap: 1%; }
+  .crew[data-n="4"] .tako:not(.hero) { width: 44px; }
+  .crew[data-n="4"] .tako.hero { width: 84px; }
   .tako .bob { animation: bob 2.6s ease-in-out infinite; }
   .tako .ear { transform-box: fill-box; }
   .tako .ear.l { transform-origin: 100% 100%; animation: flapL 1.3s ease-in-out infinite; }
@@ -802,6 +811,24 @@ function loveProgress() {
   const lo = LOVE_STEPS[lv - 1], hi = LOVE_STEPS[lv];
   return Math.max(0, Math.min(1, (state.love - lo) / (hi - lo)));
 }
+// なかよし レベルに あわせて おともだち（メンダコ）が ふえる しくみ（タスク14）。
+// state.love の 数値から そのたび けいさんするだけなので、ひきつぎコードで
+// love が つたわれば、べつの たんまつでも おなじ にんずうが さいげんされる。
+const FRIEND_COLORS = ["#8FB8FF", "#7FE0C0", "#C3A6FF", "#FFD34D"];
+function friendCountForLevel(lv) {
+  if (lv >= 9) return 4;
+  if (lv >= 7) return 3;
+  if (lv >= 5) return 2;
+  if (lv >= 3) return 1;
+  return 0;
+}
+// ヒーロー(まんなか) の まわりに おともだちを ふりわけて HTML を つくる
+function crewMarkup(n) {
+  const friends = FRIEND_COLORS.slice(0, n);
+  const left = friends.filter((_, i) => i % 2 === 0);
+  const right = friends.filter((_, i) => i % 2 === 1);
+  return left.map((c) => tako(c, "friend")).join("") + tako("#FF8FA3", "hero") + right.map((c) => tako(c, "friend")).join("");
+}
 
 // ============================================================
 //  メンダコの え（SVG）。 色だけ かえて 3びき つくる
@@ -867,11 +894,20 @@ function buildStage(el) {
     <span class="spot b"></span><span class="spot c"></span>
     <span class="swim" style="top:14%;animation:swimL ${swimDur1}s linear infinite;animation-delay:-${Math.random() * swimDur1}s">🐟</span>
     <span class="swim" style="top:32%;animation:swimR ${swimDur2}s linear infinite;animation-delay:-${Math.random() * swimDur2}s">🐠</span>
-    <div class="crew">${tako("#8FB8FF", "friend")}${tako("#FF8FA3", "hero")}${tako("#FFD34D", "friend")}</div>
+    <div class="crew" data-n="${friendCountForLevel(loveLevel())}">${crewMarkup(friendCountForLevel(loveLevel()))}</div>
     <div class="banner"></div>`);
-  // 3びきの うごきを すこし ずらすと いきいき 見える
+  // おともだちの にんずうぶん うごきを すこし ずらすと いきいき 見える
   el.querySelectorAll(".tako").forEach((t, i) => t.querySelectorAll(".bob, .ear").forEach((g) => (g.style.animationDelay = `${i * -0.7}s`)));
-  el.querySelector(".hero").addEventListener("click", (ev) => {
+  wireHeroClick(el);
+  applyOutfit();
+}
+// ヒーロー(メンちゃん) を タップした ときの うごき（なかよし度プラス・セリフ）。
+// おともだちが ふえて crew の HTML を つくりなおした ときも、ここを よびなおして
+// ボタンの きき めを つけなおす（タスク14）。
+function wireHeroClick(el) {
+  const hero = el.querySelector(".tako.hero");
+  if (!hero) return;
+  hero.addEventListener("click", (ev) => {
     mood(el, "happy", true);
     const now = Date.now();
     if (now - lastPet > 4000) {
@@ -885,6 +921,21 @@ function buildStage(el) {
     if (lv >= 3) lines = lines.concat(["きみと あそぶの たのしい！", "また ごはん ちょうだいね！"]);
     if (lv >= 6) lines = lines.concat(["きみは ぼくの しんゆう だよ！", "だいすき！"]);
     speak(pick(lines));
+  });
+}
+// state.love から けいさんした にんずうと、いま がめんに でている .crew の
+// にんずうが ずれていたら、おともだちの ぶんだけ HTML を つくりなおす。
+// レベルアップした しゅんかん と、ひきつぎコードで love を ふくげんした
+// しゅんかん の りょうほうから よばれる。
+function updateCrewDisplay() {
+  const n = friendCountForLevel(loveLevel());
+  document.querySelectorAll(".crew").forEach((crew) => {
+    if (parseInt(crew.dataset.n || "0", 10) === n) return;
+    crew.dataset.n = n;
+    crew.innerHTML = crewMarkup(n);
+    crew.querySelectorAll(".tako").forEach((t, i) => t.querySelectorAll(".bob, .ear").forEach((g) => (g.style.animationDelay = `${i * -0.7}s`)));
+    const stage = crew.closest(".stage");
+    if (stage) wireHeroClick(stage);
   });
   applyOutfit();
 }
@@ -1829,7 +1880,13 @@ function addLove(n, stageEl) {
     }
     confetti(40);
     sfx.levelup();
-    speak("なかよし レベルが あがったよ！ プレゼント！", "praise");
+    // おともだちの にんずうが ふえる しきい値を こえたら、プレゼントのセリフに
+    // くわえて「あたらしい おともだち」の おしらせも する（タスク14）。
+    const gotNewFriend = friendCountForLevel(after) > friendCountForLevel(before);
+    if (gotNewFriend) updateCrewDisplay();
+    speak(gotNewFriend
+      ? "なかよし レベルが あがったよ！ あたらしい おともだちが きたよ！"
+      : "なかよし レベルが あがったよ！ プレゼント！", "praise");
     const sticker = pick(STICKERS);
     state.stickers.push(sticker); store.set("mk.stickers", state.stickers);
     renderHud();
@@ -1995,7 +2052,7 @@ function finish() {
     // （タスク13: 演出強化。既存の判定(finish()のperfect算出)は 変更しない）。
     if (perfect && !reduced) {
       stage.classList.remove("perfectRing"); void stage.offsetWidth; stage.classList.add("perfectRing");
-      const hero = stage.querySelectorAll(".tako")[1];
+      const hero = stage.querySelector(".tako.hero");
       if (hero) {
         hero.classList.remove("superjump"); void hero.offsetWidth; hero.classList.add("superjump");
         setTimeout(() => hero.classList.remove("superjump"), 1300);
@@ -2252,6 +2309,9 @@ function applySaveData(data) {
   store.set("mk.fed", state.lastFed);
   store.set("mk.level", state.levelIdx);
   store.set("mk.sound", state.sound);
+  // ひきつぎコードで love が ふくげんされたら、おともだちの にんずうも
+  // そのばで ただしい すうに なおす（タスク14：いちから けいさんし直すだけ）。
+  updateCrewDisplay();
 }
 function setTransferMsg(msg) { $("transferMsg").textContent = msg || ""; }
 function renderTransfer() {
