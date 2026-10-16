@@ -251,6 +251,13 @@
   .key.ng { opacity: .35; animation: shake .4s; pointer-events: none; }
   .k0 { background: var(--pink); } .k1 { background: var(--lemon); } .k2 { background: var(--blue); } .k3 { background: var(--mint); }
 
+  /* ===== にほんちず(ちず)クイズ：地図のエリアそのものが ボタン ===== */
+  #content svg[role="group"] { max-width: 100%; height: auto; }
+  .region { cursor: pointer; transform-box: fill-box; transform-origin: center; }
+  .region .shape { transition: stroke-width .06s; }
+  .region.ok .shape { stroke: var(--gold); stroke-width: 7; }
+  .region.ng { opacity: .35; animation: shake .4s; pointer-events: none; }
+
   /* ===== ホーム ===== */
   .level {
     display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; background: var(--paper); border: 3px solid var(--ink);
@@ -499,6 +506,7 @@
       <button class="key k2" data-game="multiply" data-minlv="4"><span><span class="e">🦑</span>かけざん<small>グループが いくつ</small></span></button>
       <button class="key k0" data-game="divide" data-minlv="5"><span><span class="e">🦈</span>わりざん<small>あまりは いくつ</small></span></button>
       <button class="key k3" data-game="clock" data-minlv="5"><span><span class="e">🐡</span>とけい<small>なんじ なんぷん</small></span></button>
+      <button class="key k1" data-game="map" data-minlv="3"><span><span class="e">🗾</span>ちず<small>どこの ちほう？</small></span></button>
       <button class="key k1" id="bookBtn"><span><span class="e">🐋</span>シールちょう<small id="bookCount">0まい</small></span></button>
     </div>
     <p class="note">おうちの かたへ：もんだいは こえで よみあげます。iPhone は マナーモードを かいじょ して ください。<br>メンちゃんを タッチすると おはなし するよ。<br>（PCで VOICEVOX を起動していると、よりなめらかな音声で読み上げます。未起動でも自動でブラウザの読み上げに切り替わります）<br><small>おんせい: VOICEVOX:ずんだもん</small></p>
@@ -1124,7 +1132,7 @@ const COLORS = [["あか", "#E53935"], ["あお", "#1E6FE0"], ["きいろ", "#FF
 const STICKERS = ["🐳", "🐋", "🐬", "🦭", "🐟", "🐠", "🐡", "🦈", "🐙", "🦑",
   "🦐", "🦞", "🦀", "🐚", "🪸", "🪼", "🐢", "🐧", "🦦", "🦪"];
 const NAMES = { count: "かず", add: "たしざん", subtract: "ひきざん", kana: "ひらがな", more: "どっち？", color: "いろ",
-  multiply: "かけざん", divide: "わりざん", clock: "とけい" };
+  multiply: "かけざん", divide: "わりざん", clock: "とけい", map: "ちず" };
 
 // ============================================================
 //  とけい の アナログ時計 SVG（tako() と 同じように 文字列を つくる関数）
@@ -1147,6 +1155,45 @@ function clockSvg(hour, minute) {
     <circle cx="60" cy="60" r="4" fill="#FF5C8A"/>
   </svg>`;
 }
+
+// ============================================================
+//  にほんちず（8ちほう）の SVG。 外部の地理データ(SVGパス等)は この開発環境の
+//  ネットワーク制限で取得が不安定なため使わず、位置関係(どれがどの方角か・
+//  隣接関係)が正しい 簡略化した 角丸長方形のブロックを 自作する
+//  （精密な海岸線の再現は狙わない。docs/dev-loop/STATUS.md タスク9の設計判断）。
+//  沖縄は「九州・沖縄」として1地方(data-region="kyushu")にまとめ、見た目だけ
+//  九州の南西に 小さな島(クリック対象外・装飾)を かいて 別の島であることを示す。
+// ============================================================
+const JP_REGIONS = [
+  { key: "hokkaido", label: "北海道", x: 146, y: 8, w: 72, h: 54, fill: "#D1E0F2" },
+  { key: "tohoku", label: "東北", x: 136, y: 70, w: 64, h: 66, fill: "#D1F2DC" },
+  { key: "kanto", label: "関東", x: 146, y: 148, w: 58, h: 50, fill: "#F2D1E6" },
+  { key: "chubu", label: "中部", x: 80, y: 138, w: 64, h: 56, fill: "#FFE6D1" },
+  { key: "kinki", label: "近畿", x: 64, y: 198, w: 56, h: 46, fill: "#E0D1F2" },
+  { key: "chugoku", label: "中国", x: 6, y: 204, w: 58, h: 42, fill: "#EAF2D1" },
+  { key: "shikoku", label: "四国", x: 60, y: 250, w: 50, h: 38, fill: "#D1F2F2" },
+  { key: "kyushu", label: "九州・沖縄", x: 4, y: 256, w: 52, h: 58, fill: "#FFD6D6" },
+];
+function japanMapSvg() {
+  const shapes = JP_REGIONS.map((r) => {
+    const cx = r.x + r.w / 2, cy = r.y + r.h / 2;
+    const lines = r.label.length > 2 ? [r.label.slice(0, 2), r.label.slice(2)] : [r.label];
+    const fs = lines.length > 1 ? 9 : 12;
+    const text = lines.map((ln, i) =>
+      `<text x="${cx}" y="${cy + (i - (lines.length - 1) / 2) * (fs + 2) + 4}" font-size="${fs}" text-anchor="middle" font-family="sans-serif" font-weight="700" fill="#2A2250">${ln}</text>`
+    ).join("");
+    return `<g class="region" data-region="${r.key}" role="button" aria-label="${r.label}">
+      <rect class="shape" x="${r.x}" y="${r.y}" width="${r.w}" height="${r.h}" rx="18" ry="18" fill="${r.fill}" stroke="#2A2250" stroke-width="3"/>
+      ${text}
+    </g>`;
+  }).join("");
+  const okinawaDot = `<circle cx="14" cy="324" r="9" fill="#FFD6D6" stroke="#2A2250" stroke-width="2.5" pointer-events="none"/>
+    <text x="14" y="338" font-size="7" text-anchor="middle" font-family="sans-serif" font-weight="700" fill="#2A2250" pointer-events="none">沖縄</text>`;
+  return `<svg viewBox="0 0 230 340" width="230" height="340" role="group" aria-label="にほんの8ちほうの ちず">
+    ${shapes}${okinawaDot}
+  </svg>`;
+}
+
 // ============================================================
 //  レベルの ていぎ（あとで Lv4・Lv5 を ついかしやすいよう配列にしておく）
 //   carry:  たしざんで くり上がり（1けたどうしの わの けたが 9をこえる）を まぜる
@@ -1319,6 +1366,15 @@ const GAMES = {
       stage: `<div class="word"><span class="big">🐠</span></div>`,
       choices: set.map(([n, hex]) => ({ html: "", color: hex, ok: n === name, label: n })), praise: `${name}！ せいかい！` };
   },
+  // にほんちず（8ちほう）。 kind:"maptap" は テンキー(num)でも 選択肢ボタン(choice)
+  // でもなく、地図の 各エリア(data-region)そのものが ボタンに なる 新しい形式。
+  // 正解判定・コイン・効果音は judge() を そのまま つかう（別の採点しくみは作らない）。
+  map() {
+    const target = pick(JP_REGIONS);
+    const askName = target.key === "kyushu" ? "きゅうしゅう" : target.label;
+    return { kind: "maptap", prompt: `${askName}ちほうは どれ？`, say: `${askName} ちほうは どれかな？`,
+      stage: japanMapSvg(), answer: target.key, praise: `そう！ ${target.label}！` };
+  },
 };
 
 // ============================================================
@@ -1461,6 +1517,13 @@ function renderPad() {
     [7, 8, 9, 4, 5, 6, 1, 2, 3].forEach((d, i) => add(d, `k${(i + Math.floor(i / 3)) % 4}`, String(d), () => press(String(d))));
     add("⌫", "k0", "けす", () => press("del"));
     add("0", "k3 wide", "0", () => press("0"));
+  } else if (q.kind === "maptap") {
+    // 地図クイズは テンキー/選択肢ボタンの pad を つかわず、地図の 各エリア
+    // (data-region)そのものが ボタンに なる。pad は からのままにして、
+    // すでに $("content") に 置かれている SVG のエリアに クリックを つなぎこむ。
+    $("content").querySelectorAll("[data-region]").forEach((el) => {
+      el.addEventListener("click", () => { sfx.tap(); judge(el.dataset.region === q.answer, el); });
+    });
   } else {
     q.choices.forEach((c, i) => {
       const b = add(c.html, `${q.cls} k${i % 4}`, c.label, (btn) => { sfx.tap(); judge(c.ok, btn); });
