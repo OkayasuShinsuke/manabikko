@@ -1478,16 +1478,42 @@ const TATEBAYASHI_SHAPE = { key: "tatebayashi", label: "館林市", d: "M3.2,66.
 //  (STATUS.mdタスク11の指示どおり。精密な地図投影ライブラリは使わない)。
 // ============================================================
 const MAP_PALETTE = ["#D1E0F2", "#D1F2DC", "#F2D1E6", "#FFE6D1", "#E0D1F2", "#EAF2D1", "#D1F2F2", "#FFD6D6"];
-function regionsToSvg(items, view, pad, strokeW) {
-  const shapes = items.map((it, i) =>
-    `<g class="region small" data-region="${it.key}" role="button" aria-label="${it.label}">
+// タスク19: 佐賀県・神奈川県・香川県など、実際の面積が小さい都道府県は
+// スマホ幅だと見た目が数px角しかなく、小さな子にはタップしづらい。
+// d（path座標列）からバウンディングボックスを求め、幅・高さの小さい方が
+// 閾値未満なら「タップしにくい小さい領域」と判定する。見た目（形・塗り）は
+// 一切変えず、当たり判定（クリック可能な範囲）だけを広げるために使う。
+function pathBBoxMinSide(d) {
+  const nums = (d.match(/-?\d+(?:\.\d+)?/g) || []).map(Number);
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+  for (let i = 0; i + 1 < nums.length; i += 2) {
+    const x = nums[i], y = nums[i + 1];
+    if (x < minX) minX = x; if (x > maxX) maxX = x;
+    if (y < minY) minY = y; if (y > maxY) maxY = y;
+  }
+  if (!isFinite(minX) || !isFinite(minY)) return Infinity;
+  return Math.min(maxX - minX, maxY - minY);
+}
+const SMALL_REGION_MIN_SIDE = 12.5; // viewBox単位。これ未満の都道府県だけ当たり判定を広げる
+function regionsToSvg(items, view, pad, strokeW, widenSmallHitArea) {
+  const shapes = items.map((it, i) => {
+    // widenSmallHitArea が true のとき（=「くわしい ちず」の都道府県地図のみ）、
+    // 実際に小さい形状には、見た目は変えずに当たり判定だけ広い透明パスを重ねる。
+    // 23区・館林市の地図（wardsMapSvg/tatebayashiMapSvg）には widenSmallHitArea を
+    // 渡さないため、ここの処理は影響しない。
+    const isTiny = widenSmallHitArea && pathBBoxMinSide(it.d) < SMALL_REGION_MIN_SIDE;
+    const hitPad = isTiny
+      ? `<path class="shape-hit" d="${it.d}" fill="none" stroke="transparent" stroke-width="10" pointer-events="stroke"/>`
+      : "";
+    return `<g class="region small" data-region="${it.key}" role="button" aria-label="${it.label}">
       <path class="shape" d="${it.d}" fill="${MAP_PALETTE[i % MAP_PALETTE.length]}" stroke="#2A2250" stroke-width="${strokeW}"/>
-    </g>`
-  ).join("");
+      ${hitPad}
+    </g>`;
+  }).join("");
   const vb = `${-pad} ${-pad} ${view.w + pad * 2} ${view.h + pad * 2}`;
   return `<svg viewBox="${vb}" role="group" aria-label="ちず">${shapes}</svg>`;
 }
-function prefMapSvg() { return regionsToSvg(JP_PREFS, JP_PREF_VIEW, 4, 0.8); }
+function prefMapSvg() { return regionsToSvg(JP_PREFS, JP_PREF_VIEW, 4, 0.8, true); }
 function wardsMapSvg() { return regionsToSvg(TOKYO_WARDS, TOKYO_WARD_VIEW, 4, 0.7); }
 // たてばやし市クイズ: n=1なので「正しい形を 2このおとり形から 見つける」形式にする
 // (STATUS.mdタスク11: 単独市は本物クイズが作りづらいので、形あわせクイズにする、という設計判断)。
