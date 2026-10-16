@@ -442,6 +442,26 @@
   @keyframes wavetilt { 0%, 100% { transform: rotate(0); } 25% { transform: rotate(-11deg); } 50% { transform: rotate(0); } 75% { transform: rotate(11deg); } }
   .tako.hero.peek .bob { animation: bob 2.6s ease-in-out infinite, peeklean 1.2s ease-in-out; }
   @keyframes peeklean { 0%, 100% { transform: scale(1) rotate(0); } 50% { transform: scale(1.08) rotate(-4deg) translateX(-3px); } }
+  /* タスク16: アイドルモーションの バリエーションを 3種→6種に ぞうやし、もっと派手に */
+  .tako.hero.hop .bob { animation: bob 2.6s ease-in-out infinite, hopbounce .6s ease-out; }
+  @keyframes hopbounce {
+    0% { transform: translateY(0) scale(1, 1); } 30% { transform: translateY(-20px) scale(.92, 1.1); }
+    55% { transform: translateY(0) scale(1.1, .88); } 100% { transform: translateY(0) scale(1, 1); }
+  }
+  .tako.hero.shimmy .bob { animation: bob 2.6s ease-in-out infinite, shimmy .9s ease-in-out; }
+  @keyframes shimmy {
+    0%, 100% { transform: translateX(0) rotate(0); } 20% { transform: translateX(-6px) rotate(-8deg); }
+    40% { transform: translateX(6px) rotate(8deg); } 60% { transform: translateX(-5px) rotate(-6deg); } 80% { transform: translateX(4px) rotate(5deg); }
+  }
+  .tako.hero.wink .eyes circle:nth-child(1), .tako.hero.wink .eyes circle:nth-child(3) {
+    transform-box: fill-box; transform-origin: center; animation: winkone .6s ease-in-out;
+  }
+  @keyframes winkone { 0%, 100% { transform: scaleY(1); } 50% { transform: scaleY(.1); } }
+  /* お友だち(.tako.friend)も、ヒーローより ひかえめだけど ときどき うごく（タスク16） */
+  .tako.friend.hop .bob { animation: bob 2.6s ease-in-out infinite, friendhop .5s ease-out; }
+  @keyframes friendhop { 0% { transform: translateY(0); } 40% { transform: translateY(-10px) scale(.95, 1.06); } 100% { transform: translateY(0); } }
+  .tako.friend.sway .bob { animation: bob 2.6s ease-in-out infinite, friendsway .8s ease-in-out; }
+  @keyframes friendsway { 0%, 100% { transform: rotate(0); } 50% { transform: rotate(7deg); } }
 
   /* ===== ロゴの きらきら ===== */
   .logo { animation: wobble 3s ease-in-out infinite, shimmer 4s linear infinite; }
@@ -2258,11 +2278,31 @@ if (!reduced) {
       const r = t.getBoundingClientRect();
       if (r.width < 2) return;
       if (t.classList.contains("happy") || t.classList.contains("sad") || t.classList.contains("jump") || t.classList.contains("jump2")) return;
-      const act = pick(["spin", "wave", "peek"]);
+      // タスク16: アイドルモーションを 3種→6種に ぞうやし、もっと いきいき 見えるように
+      const act = pick(["spin", "wave", "peek", "hop", "shimmy", "wink"]);
       t.classList.add(act);
       setTimeout(() => t.classList.remove(act), 1200);
     });
   }, 5000);
+
+  // タスク16: おともだち(.tako.friend)も、ヒーローほどではないが たまに うごく。
+  // CPU負荷を おさえるため、いちどに うごかすのは さいだい1ぴき・6秒おき・
+  // さらに50%の かくりつで なにも しない（＝じっさいは へいきん12秒おきくらい）。
+  setInterval(() => {
+    if (Math.random() > 0.5) return;
+    const stage = document.querySelector("section:not([hidden]) .stage");
+    if (!stage) return;
+    const friends = Array.from(stage.querySelectorAll(".tako.friend")).filter((t) => {
+      const r = t.getBoundingClientRect();
+      return r.width > 2 && !t.classList.contains("happy") && !t.classList.contains("sad")
+        && !t.classList.contains("jump") && !t.classList.contains("jump2");
+    });
+    if (!friends.length) return;
+    const t = pick(friends);
+    const act = pick(["hop", "sway"]);
+    t.classList.add(act);
+    setTimeout(() => t.classList.remove(act), 900);
+  }, 6000);
 }
 
 // ---------- ボタンの つなぎこみ ----------
