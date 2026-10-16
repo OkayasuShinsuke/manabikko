@@ -46,6 +46,25 @@ npm start
 - 「ひきつぎコード」でセーブデータを別端末に引き継げる（`npm start` の実サーバー経由のみ。
   claude.aiのArtifactプレビューでは動きません）
 
+### アプリとしてインストールする（PWA）
+
+まなびっこは、ブラウザのURL欄が出ない「アプリっぽい」見た目で、Mac・iPhone・iPadの
+ホーム画面/Dockに追加できます。インストール不要・App Store不要・無料です。
+
+| 端末 | 手順 |
+|---|---|
+| **Mac**（`npm start` したPC自身） | Safariで `http://localhost:3000/kids/` を開く → メニューの「ファイル」→「Dockに追加」 |
+| **iPhone / iPad**（同じWi-Fi内） | Safariで `http://<PCのIP>:3000/kids/` を開く → 共有ボタン → 「ホーム画面に追加」 |
+
+**注意（オフライン対応について）:** 「オフラインでも遊べる」機能（サービスワーカー）は、
+ブラウザの仕組み上 **HTTPS接続でしか有効になりません**。`localhost`（Mac自身で開く場合）は
+例外的にHTTPS扱いなので問題なく動きますが、`http://<PCのIP>:3000` のような同じWi-Fi内での
+アクセスでは、アイコンを追加してアプリのように開くこと自体はできても、オフライン対応だけは
+効きません。iPhone/iPadでもオフライン対応まで欲しい場合は、[Cloudflare Tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/get-started/)
+や [ngrok](https://ngrok.com/) で無料のHTTPS URLを発行し、そちらにアクセスしてください
+（`cloudflared tunnel --url http://localhost:3000` のように、ローカルのサーバーに
+外部からHTTPSで繋げる無料ツールです）。
+
 ### より自然な読み上げにする（VOICEVOX連携・任意）
 
 無料の音声合成エンジン **[VOICEVOX](https://voicevox.hiroshiba.jp/)** をPCで起動していると、
