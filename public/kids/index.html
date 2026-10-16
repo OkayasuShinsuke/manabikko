@@ -601,6 +601,7 @@
       <button class="key k3" data-game="clock" data-minlv="5"><span><span class="e">🐡</span>とけい<small>なんじ なんぷん</small></span></button>
       <button class="key k1" data-game="map" data-minlv="3"><span><span class="e">🗾</span>ちず<small>どこの ちほう？</small></span></button>
       <button class="key k2" data-game="detailmap" data-minlv="5"><span><span class="e">🗺️</span>くわしい ちず<small>とどうふけんは どこ？</small></span></button>
+      <button class="key k3" data-game="fish" data-minlv="1"><span><span class="e">🐳</span>うみのいきもの<small>なまえは なにかな</small></span></button>
       <button class="key k1" id="bookBtn"><span><span class="e">🐋</span>シールちょう<small id="bookCount">0まい</small></span></button>
       <button class="key k3" id="puzzleBtn"><span><span class="e">🧩</span>パズル<small>メンちゃんを そろえよう</small></span></button>
     </div>
@@ -1314,7 +1315,7 @@ const COLORS = [["あか", "#E53935"], ["あお", "#1E6FE0"], ["きいろ", "#FF
 const STICKERS = ["🐳", "🐋", "🐬", "🦭", "🐟", "🐠", "🐡", "🦈", "🐙", "🦑",
   "🦐", "🦞", "🦀", "🐚", "🪸", "🪼", "🐢", "🐧", "🦦", "🦪"];
 const NAMES = { count: "かず", add: "たしざん", subtract: "ひきざん", kana: "ひらがな", more: "どっち？", color: "いろ",
-  multiply: "かけざん", divide: "わりざん", clock: "とけい", map: "ちず", detailmap: "くわしい ちず" };
+  multiply: "かけざん", divide: "わりざん", clock: "とけい", map: "ちず", detailmap: "くわしい ちず", fish: "うみのいきもの" };
 
 // ============================================================
 //  とけい の アナログ時計 SVG（tako() と 同じように 文字列を つくる関数）
@@ -1813,6 +1814,18 @@ const GAMES = {
     return { kind: "choice", cls: "color", cols: set.length === 4 ? 2 : 3, prompt: `「${name}」は どれ？`, say: `${name}は どれかな？`,
       stage: `<div class="word"><span class="big">🐠</span></div>`,
       choices: set.map(([n, hex]) => ({ html: "", color: hex, ok: n === name, label: n })), praise: `${name}！ せいかい！` };
+  },
+  // うみの いきものの なまえあて。THINGS（[えもじ, なまえ]の はいれつ、count等と
+  // 共有）を そのまま つかい、新しい データはつくらない（既存パターンの再利用）。
+  // ふせいかいの せんたくしは THINGS の 他のいきものの なまえから 3つ えらぶ
+  // （kana() の others と 同じ つくりかた）。 docs/dev-loop/STATUS.md タスク17。
+  fish() {
+    const [emoji, name] = pick(THINGS);
+    const others = shuffle(THINGS.filter((t) => t[1] !== name)).slice(0, 3).map((t) => t[1]);
+    return { kind: "choice", cls: "text-choice", cols: 2, prompt: "なんの なまえ？", say: `これは なんの なまえかな？`,
+      stage: `<div class="word"><span class="big">${emoji}</span></div>`,
+      choices: shuffle([name, ...others]).map((n) => ({ html: n, ok: n === name, label: n })),
+      praise: `これは ${name}！` };
   },
   // にほんちず（8ちほう）。 kind:"maptap" は テンキー(num)でも 選択肢ボタン(choice)
   // でもなく、地図の 各エリア(data-region)そのものが ボタンに なる 新しい形式。
