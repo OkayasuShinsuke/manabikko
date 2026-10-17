@@ -349,11 +349,37 @@
   .row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; width: 100%; }
   .row .key { font-family: var(--body); font-weight: 800; font-size: 1.15rem; }
   .book { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
-  .book span {
+  .book span, .book button {
     aspect-ratio: 1; display: grid; place-items: center; font-size: 2.2rem;
     background: var(--paper); border: 3px solid var(--ink); border-radius: 18px;
+    position: relative; padding: 0; font-family: inherit;
   }
   .book span.no { border-style: dashed; color: #9C95C6; font-size: 1.3rem; background: #3B2F6E; border-color: #7B70B8; }
+  /* タスク22: シールちょうで なかま化できる シールボタン(タップで なかまに なる) */
+  .book button.tamed { background: #FFE3EE; border-color: var(--hot); }
+  .book .tamemark { position: absolute; bottom: 2px; right: 4px; font-size: .85rem; }
+
+  /* ===== タスク22: なかま一覧・バトル ===== */
+  .partyGrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .partyGrid button {
+    aspect-ratio: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
+    font-size: 2rem; background: var(--paper); border: 3px solid var(--ink); border-radius: 18px; padding: 4px;
+  }
+  .partyGrid button small { font-size: .6rem; font-weight: 700; line-height: 1.3; font-family: var(--body); }
+  .hpbar { position: relative; height: 14px; border-radius: 999px; background: #F1E9FF; border: 2px solid var(--ink); overflow: hidden; }
+  .hpbar i { position: absolute; inset: 0; width: 100%; background: linear-gradient(90deg, #2FB36B, #9BE876); border-radius: 999px; transition: width .4s; }
+  .hpbar.danger i { background: linear-gradient(90deg, #E53935, #FF8C1A); }
+  .hpbar.sm { height: 10px; }
+  .vs { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .vs .fighter { flex: 1; background: var(--paper); border: 3px solid var(--ink); border-radius: 18px; padding: 10px 6px; text-align: center; }
+  .vs .fighter .fe { font-size: 2.6rem; display: block; }
+  .vs .fighter small { display: block; font-size: .65rem; font-weight: 700; margin-top: 4px; font-family: var(--body); }
+  .vs .fighter .hpbar { margin-top: 6px; }
+  .vs .vstext { font-family: var(--display); font-weight: 400; font-size: 1.5rem; color: var(--gold); -webkit-text-stroke: 2px var(--ink); paint-order: stroke fill; flex: none; }
+  .battlebars { display: flex; gap: 10px; margin: 0 0 6px; }
+  .battlebars .bbrow { flex: 1; display: flex; align-items: center; gap: 6px; }
+  .battlebars .fe { font-size: 1.4rem; line-height: 1; }
+  .battlebars .hpbar { flex: 1; }
 
   /* +1 の うきあがる 文字 */
   .plus {
@@ -639,6 +665,7 @@
       <button class="key k3" data-game="fish" data-minlv="1"><span><span class="e">🐳</span>うみのいきもの<small>なまえは なにかな</small></span></button>
       <button class="key k1" id="bookBtn"><span><span class="e">🐋</span>シールちょう<small id="bookCount">0まい</small></span></button>
       <button class="key k3" id="puzzleBtn"><span><span class="e">🧩</span>パズル<small>メンちゃんを そろえよう</small></span></button>
+      <button class="key k2" id="partyBtn"><span><span class="e">⚔️</span>なかま バトル<small>シールを なかまに しよう</small></span></button>
     </div>
     <p class="note">おうちの かたへ：もんだいは こえで よみあげます。iPhone は マナーモードを かいじょ して ください。<br>メンちゃんを タッチすると おはなし するよ。<br>（PCで VOICEVOX を起動していると、よりなめらかな音声で読み上げます。未起動でも自動でブラウザの読み上げに切り替わります）<br><small>おんせい: VOICEVOX:ずんだもん</small></p>
   </section>
@@ -651,6 +678,12 @@
       <span class="pill miss">ミス <b id="ngNum">0</b></span>
       <span class="pill coin">🐚 <b class="coinNum">0</b></span>
       <button class="round" id="repeatBtn" aria-label="もういちど きく">🐬</button>
+    </div>
+    <!-- タスク22: バトル中だけ 表示する HPバー。startGame()で いちど hidden にし、
+         beginBattleRound()が じっさいに バトルを はじめた ときだけ 見せる。 -->
+    <div class="battlebars" id="battleBars" hidden>
+      <div class="bbrow"><span class="fe" id="gbAllyEmoji"></span><div class="hpbar"><i id="gbAllyHpFill"></i></div></div>
+      <div class="bbrow"><span class="fe" id="gbEnemyEmoji"></span><div class="hpbar"><i id="gbEnemyHpFill"></i></div></div>
     </div>
     <div class="stage" data-stage></div>
     <div class="marquee">
@@ -778,6 +811,57 @@
       </div>
     </div>
   </section>
+
+  <!-- ===== タスク22: なかま一覧 ===== -->
+  <section id="party" hidden>
+    <div class="hud">
+      <button class="round" id="partyBack" aria-label="ホームへ もどる">🐳</button>
+      <h1>なかま一覧</h1>
+      <span class="pill coin">🐚 <b class="coinNum">0</b></span>
+    </div>
+    <p class="note" id="partyEmpty" hidden>まだ なかまが いないよ。シールちょうで シールを タップすると なかまに なるよ。</p>
+    <p class="note">タップすると バトルに いけるよ</p>
+    <div class="partyGrid" id="partyGrid"></div>
+  </section>
+
+  <!-- ===== タスク22: バトル ===== -->
+  <section id="battle" hidden>
+    <div class="hud">
+      <button class="round" id="battleBack" aria-label="なかま一覧へ もどる">🐳</button>
+      <h1>バトル</h1>
+      <span class="pill coin">🐚 <b class="coinNum">0</b></span>
+    </div>
+    <div class="vs">
+      <div class="fighter" id="battleAllyCard">
+        <span class="fe" id="battleAllyEmoji"></span>
+        <div class="hpbar"><i id="battleAllyHpFill"></i></div>
+        <small id="battleAllyHpText"></small>
+        <small id="battleAllyStats"></small>
+      </div>
+      <span class="vstext">VS</span>
+      <div class="fighter" id="battleEnemyCard">
+        <span class="fe" id="battleEnemyEmoji"></span>
+        <div class="hpbar"><i id="battleEnemyHpFill"></i></div>
+        <small id="battleEnemyHpText"></small>
+        <small id="battleEnemyStats"></small>
+      </div>
+    </div>
+    <p class="note">どの もんだいで たたかう？</p>
+    <div class="menu" id="battleGameGrid">
+      <button class="key k1" data-game="count"><span><span class="e">🐟</span>かず<small>いくつ あるかな</small></span></button>
+      <button class="key k0" data-game="add"><span><span class="e">🐙</span>たしざん<small>あわせて いくつ</small></span></button>
+      <button class="key k2" data-game="subtract"><span><span class="e">🦞</span>ひきざん<small>のこりは いくつ</small></span></button>
+      <button class="key k3" data-game="kana"><span><span class="e">🐬</span>ひらがな<small>さいしょの もじ</small></span></button>
+      <button class="key k2" data-game="more"><span><span class="e">🦀</span>どっち？<small>おおいのは どっち</small></span></button>
+      <button class="key k0" data-game="color"><span><span class="e">🐠</span>いろ<small>なにいろ かな</small></span></button>
+      <button class="key k2" data-game="multiply" data-minlv="4"><span><span class="e">🦑</span>かけざん<small>グループが いくつ</small></span></button>
+      <button class="key k0" data-game="divide" data-minlv="5"><span><span class="e">🦈</span>わりざん<small>あまりは いくつ</small></span></button>
+      <button class="key k3" data-game="clock" data-minlv="5"><span><span class="e">🐡</span>とけい<small>なんじ なんぷん</small></span></button>
+      <button class="key k1" data-game="map" data-minlv="3"><span><span class="e">🗾</span>ちず<small>どこの ちほう？</small></span></button>
+      <button class="key k2" data-game="detailmap" data-minlv="5"><span><span class="e">🗺️</span>くわしい ちず<small>とどうふけんは どこ？</small></span></button>
+      <button class="key k3" data-game="fish" data-minlv="1"><span><span class="e">🐳</span>うみのいきもの<small>なまえは なにかな</small></span></button>
+    </div>
+  </section>
 </div>
 <canvas id="fx"></canvas>
 <div id="bigflash" aria-hidden="true"></div>
@@ -817,6 +901,11 @@ const state = {
   levelIdx: migrateLevelIdx(),
   sound: store.get("mk.sound", true),
   stickers: store.get("mk.stickers", []),
+  // タスク22: シールちょうで なかま化した 生き物の しゅるい(文字列)の はいれつ。
+  // タスク14の「お友達」システム(なかよし度で ふえる メンダコ)とは べつもの。
+  // ステータス(HP/ATK/DEF/SPD)は statsFor() で いつでも さいげん できるので、
+  // ここには しゅるいだけ保存し、保存データを ふくらませない。
+  party: store.get("mk.party", []),
   coins: store.get("mk.coins", 0),
   owned: store.get("mk.owned", ["pink"]),
   equip: store.get("mk.equip", { head: null, face: null, hold: null, color: "pink" }),
@@ -824,6 +913,29 @@ const state = {
   lastFed: store.get("mk.fed", 0),
 };
 let lastPet = 0;
+// タスク22: バトル設定の いま えらんでいる あいて( なかま一覧→バトル画面に いく ときに セットする)
+let battleSetup = null;
+
+// ============================================================
+//  タスク22: シール→なかま化・バトルの ステータス計算
+//  文字列からの かんたんな ハッシュ値(djb2系)で、同じ生き物は いつも
+//  同じ HP/こうげき/ぼうぎょ/すばやさに なるようにする(運ではなく
+//  生き物ごとの こせいとして あつかう)。
+// ============================================================
+function hashStr(str) {
+  let h = 5381;
+  for (let i = 0; i < str.length; i++) h = ((h << 5) + h + str.charCodeAt(i)) | 0;
+  return Math.abs(h);
+}
+function statsFor(emoji) {
+  const h = hashStr(emoji);
+  return {
+    hp: 22 + (h % 16), // 22〜37
+    atk: 5 + (Math.floor(h / 16) % 7), // 5〜11
+    def: 2 + (Math.floor(h / 128) % 6), // 2〜7
+    spd: 3 + (Math.floor(h / 1024) % 8), // 3〜10
+  };
+}
 
 // ============================================================
 //  きせかえ アイテム・ごはん の データ
@@ -1382,6 +1494,10 @@ const sfx = {
     tone(784, 0, 0.12); tone(988, 0.09, 0.12); tone(1319, 0.18, 0.3);
     for (let i = 0; i < 4; i++) { tone(1568, 0.25 + i * 0.09, 0.07, "square", 0.05); tone(2093, 0.29 + i * 0.09, 0.12, "square", 0.05); }
   },
+  // タスク22: シールを なかまに した ときの、やさしい きらきら音
+  tame() { tone(440, 0, 0.1, "triangle", 0.15); tone(660, 0.08, 0.15, "triangle", 0.15); tone(880, 0.18, 0.25, "sine", 0.15); },
+  // タスク22: バトルの こうげきヒット音
+  attack() { tone(180, 0, 0.08, "sawtooth", 0.18); tone(120, 0.05, 0.12, "sawtooth", 0.15); },
 };
 // sfx の各メソッドを薄くラップして「後勝ち」を実現する。打ち切り単位は
 // sfx.xxx() の呼び出し単位（＝ここで世代を進めるタイミング）であり、
@@ -1409,6 +1525,8 @@ const COLORS = [["あか", "#E53935"], ["あお", "#1E6FE0"], ["きいろ", "#FF
   ["ぴんく", "#FF8CC6"], ["むらさき", "#8E44AD"], ["おれんじ", "#FF8C1A"], ["ちゃいろ", "#8B5A2B"]];
 const STICKERS = ["🐳", "🐋", "🐬", "🦭", "🐟", "🐠", "🐡", "🦈", "🐙", "🦑",
   "🦐", "🦞", "🦀", "🐚", "🪸", "🪼", "🐢", "🐧", "🦦", "🦪"];
+// タスク22: バトルの あいて専用。STICKERSとは かぶらない 生き物。
+const ENEMIES = ["👹", "🐉", "🦂", "🕷️", "👾", "🦇", "🐺", "🐍", "🦖", "🧌"];
 const NAMES = { count: "かず", add: "たしざん", subtract: "ひきざん", kana: "ひらがな", more: "どっち？", color: "いろ",
   multiply: "かけざん", divide: "わりざん", clock: "とけい", map: "ちず", detailmap: "くわしい ちず", fish: "うみのいきもの" };
 
@@ -1980,7 +2098,7 @@ const GAMES = {
 //  がめんの きりかえ と HUD
 // ============================================================
 function show(id) {
-  ["home", "game", "result", "book", "shop", "feed", "transfer", "puzzle"].forEach((s) => ($(s).hidden = s !== id));
+  ["home", "game", "result", "book", "shop", "feed", "transfer", "puzzle", "party", "battle"].forEach((s) => ($(s).hidden = s !== id));
   if (id === "home") updateHungryBubble();
   if (id === "shop") renderShop();
   if (id === "feed") renderFoods();
@@ -2075,6 +2193,11 @@ const gameStage = () => $("game").querySelector(".stage");
 function startGame(key) {
   game = { key, index: 0, ok: 0, ng: 0, stars: 0, combo: 0, earned: 0, missed: false, locked: false, input: "", q: null };
   gameStage().classList.remove("fever");
+  // タスク22: ふつうの もんだい(バトルでない)では HPバーを かくす。
+  // バトルの ときは beginBattleRound()が この あとで game.battle を つけ、
+  // バーを ひょうじする。
+  const bars = $("battleBars");
+  if (bars) bars.hidden = true;
   show("game");
   renderHud();
   nextQuestion();
@@ -2195,7 +2318,27 @@ function judge(ok, btn) {
     banner(stage, fever ? "フィーバー！" : game.combo === 2 ? "2れんぞく！" : pick(["せいかい！", "すごい！", "やったね！"]), fever);
     speak(game.combo === 3 ? "フィーバー！ " + game.q.praise : game.q.praise, "praise");
     renderHud();
-    setTimeout(() => { game.index++; game.index < ROUND ? nextQuestion() : finish(); }, 1800);
+    // タスク22: バトル中は、せいかい＝なかまの こうげきとして あいての HPを へらす。
+    // 上の せいかい演出(sfx.correctChain()等)は そのまま のこし、その あとに
+    // バトル専用の処理を つけたすだけ(新しい並列の採点ロジックは つくらない)。
+    if (game.battle && !game.battle.over) battleAttack(game.battle.ally, game.battle.enemy);
+    setTimeout(() => {
+      if (game.battle) {
+        if (!game.battle.over) {
+          game.index++;
+          if (game.index < ROUND) { nextQuestion(); return; }
+          // 既定ラウンド(5問)が おわっても けっちゃくしなければ、
+          // のこりHPの わりあいが たかい ほうの かち。
+          const allyRatio = game.battle.ally.hp / game.battle.ally.maxHp;
+          const enemyRatio = game.battle.enemy.hp / game.battle.enemy.maxHp;
+          game.battle.over = true;
+          game.battle.win = allyRatio >= enemyRatio;
+        }
+        finish();
+        return;
+      }
+      game.index++; game.index < ROUND ? nextQuestion() : finish();
+    }, 1800);
   } else {
     game.ng++; game.combo = 0; game.missed = true;
     stage.classList.remove("fever", "reach");
@@ -2206,11 +2349,52 @@ function judge(ok, btn) {
     mood(stage, "sad", false);
     speak(pick(["おしいね。 もういちど！", "もうすこしだよ！", "だいじょうぶ、もういちど！", "ちがう みたい。 もういちど！"]), "sorry");
     renderHud();
+    // タスク22: バトル中は、ふせいかい＝あいての こうげきとして じぶんの HPを へらす。
+    // HPが0に なったら その時点で ラウンドを おわらせる(finish()へ)。
+    if (game.battle && !game.battle.over) {
+      battleAttack(game.battle.enemy, game.battle.ally);
+      if (game.battle.over) {
+        game.locked = true;
+        setTimeout(() => finish(), 1000);
+      }
+    }
   }
 }
 
 function finish() {
   const stage = $("result").querySelector(".stage");
+  // タスク22: バトル中の けっか は、既存の #result 画面・confetti/banner・
+  // sfx.perfect()/sfx.ng()・コイン&シール付与の しくみを そのまま つかい、
+  // ここだけ 分岐させる(新しい通貨・新しい演出ライブラリは つくらない)。
+  if (game.battle) {
+    const win = !!game.battle.win;
+    const sticker = pick(STICKERS);
+    state.stickers.push(sticker); store.set("mk.stickers", state.stickers);
+    $("stars").innerHTML = Array.from({ length: ROUND }, (_, i) =>
+      `<span class="${i < game.stars ? "" : "off"}" style="animation-delay:${0.3 + i * 0.15}s">★</span>`).join("");
+    $("prize").textContent = sticker;
+    $("earnText").innerHTML = `${win ? "バトル かち！" : "バトル まけちゃった…"}<br>シール ゲット！<br>🐚 +${game.earned}`;
+    show("result");
+    renderHud();
+    stage.classList.toggle("fever", win);
+    setTimeout(() => {
+      banner(stage, win ? "かち！" : "まけちゃった…", win);
+      mood(stage, win ? "happy" : "sad", win);
+      if (win && !reduced) {
+        stage.classList.remove("perfectRing"); void stage.offsetWidth; stage.classList.add("perfectRing");
+        const hero = stage.querySelector(".tako.hero");
+        if (hero) {
+          hero.classList.remove("superjump"); void hero.offsetWidth; hero.classList.add("superjump");
+          setTimeout(() => hero.classList.remove("superjump"), 1300);
+        }
+        bigFlash();
+      }
+    }, 100);
+    confetti(win ? 90 : 30, win);
+    win ? sfx.perfect() : sfx.ng();
+    speak(win ? "バトル かち！ すごいね！ シールを どうぞ！" : "ざんねん、バトルは まけちゃった。シールを どうぞ！ また ちょうせんしよう！", "praise");
+    return;
+  }
   const perfect = game.stars === ROUND;
   const sticker = pick(STICKERS);
   state.stickers.push(sticker); store.set("mk.stickers", state.stickers);
@@ -2244,9 +2428,125 @@ function finish() {
 
 function openBook() {
   const owned = new Set(state.stickers);
-  $("bookGrid").innerHTML = STICKERS.map((s) => (owned.has(s) ? `<span>${s}</span>` : '<span class="no">？</span>')).join("");
+  const partySet = new Set(state.party);
+  // タスク22: もっている シールは タップできる button に する。タップすると
+  // state.party に その生き物の しゅるいを 追加し(なかま化)、◎印をつける。
+  $("bookGrid").innerHTML = STICKERS.map((s) => {
+    if (!owned.has(s)) return '<span class="no">？</span>';
+    const tamed = partySet.has(s);
+    return `<button type="button" class="${tamed ? "tamed" : ""}" data-emoji="${s}">${s}${tamed ? '<small class="tamemark">💗</small>' : ""}</button>`;
+  }).join("");
+  $("bookGrid").querySelectorAll("button[data-emoji]").forEach((btn) => {
+    btn.addEventListener("click", () => tameSticker(btn.dataset.emoji, btn));
+  });
   show("book");
   speak(`シールは ${state.stickers.length}まい あるよ`);
+}
+// タスク22: シールちょうで シール(所有している生き物)をタップすると、
+// state.party に なかまとして 追加する。同じ しゅるいは 1回だけ(重複なし)。
+function tameSticker(emoji, btn) {
+  if (state.party.includes(emoji)) {
+    sfx.tap();
+    speak("もう なかまだよ！");
+    return;
+  }
+  state.party.push(emoji);
+  store.set("mk.party", state.party);
+  sfx.tame();
+  btn.classList.add("tamed");
+  if (!btn.querySelector(".tamemark")) btn.insertAdjacentHTML("beforeend", '<small class="tamemark">💗</small>');
+  speak("なかまに なったよ！");
+}
+
+// ============================================================
+//  タスク22: なかま一覧・バトル
+// ============================================================
+function openParty() {
+  const grid = $("partyGrid");
+  const empty = $("partyEmpty");
+  if (state.party.length === 0) {
+    grid.innerHTML = "";
+    empty.hidden = false;
+  } else {
+    empty.hidden = true;
+    grid.innerHTML = state.party.map((emoji) => {
+      const st = statsFor(emoji);
+      return `<button type="button" data-emoji="${emoji}">
+        <span class="fe">${emoji}</span>
+        <small>HP${st.hp} こう${st.atk} ぼう${st.def} すば${st.spd}</small>
+      </button>`;
+    }).join("");
+    grid.querySelectorAll("button[data-emoji]").forEach((btn) => {
+      btn.addEventListener("click", () => { sfx.tap(); openBattle(btn.dataset.emoji); });
+    });
+  }
+  show("party");
+}
+// なかま一覧で なかまを タップしたら、ランダムな あいてを きめて バトル画面へ
+function openBattle(allyEmoji) {
+  const enemyEmoji = pick(ENEMIES);
+  battleSetup = { allyEmoji, enemyEmoji };
+  renderBattleSetup();
+  show("battle");
+  speak(`${allyEmoji} たい ${enemyEmoji}！ どの もんだいで たたかうか えらんでね`);
+}
+function renderBattleSetup() {
+  if (!battleSetup) return;
+  const ally = statsFor(battleSetup.allyEmoji), enemy = statsFor(battleSetup.enemyEmoji);
+  $("battleAllyEmoji").textContent = battleSetup.allyEmoji;
+  $("battleEnemyEmoji").textContent = battleSetup.enemyEmoji;
+  $("battleAllyStats").textContent = `HP${ally.hp} こう${ally.atk} ぼう${ally.def} すば${ally.spd}`;
+  $("battleEnemyStats").textContent = `HP${enemy.hp} こう${enemy.atk} ぼう${enemy.def} すば${enemy.spd}`;
+  $("battleAllyHpFill").style.width = "100%";
+  $("battleEnemyHpFill").style.width = "100%";
+  $("battleAllyHpFill").parentElement.classList.remove("danger");
+  $("battleEnemyHpFill").parentElement.classList.remove("danger");
+  $("battleAllyHpText").textContent = `${ally.hp}/${ally.hp}`;
+  $("battleEnemyHpText").textContent = `${enemy.hp}/${enemy.hp}`;
+}
+// バトル画面で もんだいの しゅるいを タップしたら、じっさいに その問題で
+// プレイを はじめる。既存の startGame()を そのまま つかい、game.battle を
+// あとから つけたすだけ(新しい並列の採点ロジックは つくらない)。
+function beginBattleRound(key) {
+  if (!battleSetup) return;
+  const allyStats = statsFor(battleSetup.allyEmoji), enemyStats = statsFor(battleSetup.enemyEmoji);
+  startGame(key);
+  game.battle = {
+    ally: { emoji: battleSetup.allyEmoji, stats: allyStats, hp: allyStats.hp, maxHp: allyStats.hp },
+    enemy: { emoji: battleSetup.enemyEmoji, stats: enemyStats, hp: enemyStats.hp, maxHp: enemyStats.hp },
+    over: false, win: false,
+  };
+  $("gbAllyEmoji").textContent = battleSetup.allyEmoji;
+  $("gbEnemyEmoji").textContent = battleSetup.enemyEmoji;
+  $("battleBars").hidden = false;
+  renderBattleBars();
+}
+function renderBattleBars() {
+  if (!game || !game.battle) return;
+  const { ally, enemy } = game.battle;
+  const af = $("gbAllyHpFill"), ef = $("gbEnemyHpFill");
+  if (af) {
+    af.style.width = `${Math.max(0, Math.round((ally.hp / ally.maxHp) * 100))}%`;
+    af.parentElement.classList.toggle("danger", ally.hp / ally.maxHp < 0.3);
+  }
+  if (ef) {
+    ef.style.width = `${Math.max(0, Math.round((enemy.hp / enemy.maxHp) * 100))}%`;
+    ef.parentElement.classList.toggle("danger", enemy.hp / enemy.maxHp < 0.3);
+  }
+}
+// こうげきがわ(attacker)が ぼうぎょがわ(defender)に ダメージを あたえる。
+// すばやさが たかい ほうは 30%の かくりつで クリティカル(1.5倍)。
+function battleAttack(attacker, defender) {
+  const atkIsFaster = attacker.stats.spd >= defender.stats.spd;
+  let dmg = Math.max(1, Math.round(attacker.stats.atk - defender.stats.def / 2));
+  if (atkIsFaster && Math.random() < 0.3) dmg = Math.round(dmg * 1.5);
+  defender.hp = Math.max(0, defender.hp - dmg);
+  sfx.attack();
+  renderBattleBars();
+  if (defender.hp <= 0) {
+    game.battle.over = true;
+    game.battle.win = defender === game.battle.enemy;
+  }
 }
 
 // ============================================================
@@ -2450,7 +2750,12 @@ if (!reduced) {
 
 // ---------- ボタンの つなぎこみ ----------
 buildLevelSelector();
-document.querySelectorAll("[data-game]").forEach((b) => b.addEventListener("click", () => { sfx.tap(); startGame(b.dataset.game); }));
+// タスク22: バトル画面(#battleGameGrid)にも 同じ data-game 属性の ボタンを
+// ふくめるため、ホームの もんだいせんたくは #home の中だけに スコープする
+// (updateGameVisibility()は document全体に かけたままで よい。レベルによる
+// ひょうじ/非ひょうじは どちらの ボタンにも 同じように はんえいさせたいため)。
+document.querySelectorAll("#home [data-game]").forEach((b) => b.addEventListener("click", () => { sfx.tap(); startGame(b.dataset.game); }));
+document.querySelectorAll("#battleGameGrid [data-game]").forEach((b) => b.addEventListener("click", () => { sfx.tap(); beginBattleRound(b.dataset.game); }));
 $("soundBtn").addEventListener("click", () => { state.sound = !state.sound; store.set("mk.sound", state.sound); renderHud(); speak("おとを だすよ"); });
 LEVELS.forEach((_, i) => {
   const btn = $("lv" + (i + 1));
@@ -2470,6 +2775,9 @@ $("puzzleBtn").addEventListener("click", () => { sfx.tap(); openPuzzle(); });
 $("puzzleBack").addEventListener("click", () => { if ("speechSynthesis" in window) { speechSynthesis.cancel(); stopSpeakQueue(); } show("home"); });
 $("puzzleAgainBtn").addEventListener("click", () => { sfx.tap(); openPuzzle(); });
 $("puzzleHomeBtn").addEventListener("click", () => { sfx.tap(); show("home"); });
+$("partyBtn").addEventListener("click", () => { sfx.tap(); openParty(); });
+$("partyBack").addEventListener("click", () => show("home"));
+$("battleBack").addEventListener("click", () => show("party"));
 
 // ---------- ひきつぎコード（複数端末セーブ転送） ----------
 // 注意: claude.ai の Artifact プレビューからは本物のサーバーに繋がらないため、
@@ -2484,12 +2792,14 @@ function collectSaveData() {
     lastFed: state.lastFed,
     levelIdx: state.levelIdx,
     sound: state.sound,
+    party: state.party,
   };
 }
 function applySaveData(data) {
   if (!data || typeof data !== "object") return;
   if (typeof data.coins === "number") state.coins = data.coins;
   if (Array.isArray(data.stickers)) state.stickers = data.stickers;
+  if (Array.isArray(data.party)) state.party = data.party;
   if (Array.isArray(data.owned)) state.owned = data.owned;
   if (data.equip && typeof data.equip === "object") state.equip = data.equip;
   if (typeof data.love === "number") state.love = data.love;
@@ -2501,6 +2811,7 @@ function applySaveData(data) {
   if (typeof data.sound === "boolean") state.sound = data.sound;
   store.set("mk.coins", state.coins);
   store.set("mk.stickers", state.stickers);
+  store.set("mk.party", state.party);
   store.set("mk.owned", state.owned);
   store.set("mk.equip", state.equip);
   store.set("mk.love", state.love);
