@@ -350,7 +350,7 @@
     - 目安: 例えば「正解→即コンボ音」のように連続して鳴る既存シーンで、
       音が濁らず新しい方が明瞭に聞こえることを確認する。既存の各sfxの
       音色・長さ自体は変えない（打ち切りタイミングの制御のみ追加）。
-24. [ ] **パチンコ筐体風の演出をさらに追加する**（ユーザー要望、2026-10-17）
+24. [x] **パチンコ筐体風の演出をさらに追加する**（ユーザー要望、2026-10-17。完了）
     - 背景: ユーザーからYouTubeの「パチンコ台のエフェクト動画」を参考にして
       ほしいという要望があったが、この環境では動画を視聴する手段が無いため、
       一般に知られているパチンコ筐体の定番演出（枠を這うように流れる
@@ -448,6 +448,30 @@ N=10に達したら、その周の最後に `ScheduleWakeup` を `stop:true` で
 
 ## 直近のログ(新しい方が上)
 
+- タスク24(パチンコ筐体風の演出をさらに追加・完了、2026-10-17): 本物の動画は
+  見られないため一般に知られているパチンコ定番演出の知識にもとづき実装(本文に
+  明記)。a) LEDチェイスライト: buildStage()の各ステージに`<i class="ledchase">`を
+  1個追加、conic-gradient+mask-exclude(既存の.stage::after枠と同じ手法)で縁を
+  光点が周回。常時点灯ではなく`.stage.fever`中と`.stage.reach`中だけopacity:1に
+  なる設計。b) リーチ演出: 正解判定直前、既存の`sfx.riser()`呼び出しと同時に
+  `stage`へ`reach`クラスを420ms付け外し(judge()内のクラス操作のみ、riser()本体や
+  採点ロジックは無変更)、`.stage.reach::after`(電飾わく)と`.glow`の点滅周期を
+  .7s/.5s→.12s前後に加速。.stageそのもののanimation(タスク13のokshake等)とは
+  別要素(::after/.glow)を使い、衝突しないようにした。c) 大当たり確定フラッシュ:
+  固定オーバーレイ`#bigflash`を新設、`bigFlash()`関数(300msのopacityフラッシュ)を
+  フィーバー突入時(judge()のcombo===3)とパーフェクト時(finish())に呼ぶ。
+  `reduced`時は`bigFlash()`内で即return(完全スキップ)。LEDチェイスも
+  `@media (prefers-reduced-motion: reduce) { .ledchase { opacity:0 !important } }`
+  で、フィーバー中でも確実に消えるようにした(既存のanimation-duration圧縮だけに
+  頼らない)。judge()/finish()の採点ロジック・sfxオブジェクトの中身は無変更、
+  タスク13のokshake/comboShake/feverShake/superjump/perfectRingも無変更のまま
+  共存を確認。Playwright確認: 実際にプレイしてフィーバー・パーフェクトまで到達させ
+  screenshotで視覚確認(LEDチェイスの光点・リーチ中の高速点滅・bigflashの白い
+  フラッシュをいずれも確認)、MutationObserverでbigflashが通常時は発火・
+  reduced-motion時は一度も発火しないことを機械的に確認、pageerror 0件
+  (通常・reduced-motion両方)。親セッション側でタスク23のcorrectChain()実装
+  (riser/ok/coinのまとまり)とマージする際、judge()内の該当箇所を手動で統合
+  (reachクラス付け外し＋correctChain()呼び出しを両立)。
 - タスク23(効果音の後勝ち・完了、2026-10-17): sfx.xxx()呼び出しごとに
   世代(generation)を進め、直前の世代のまだ鳴っているノードを30msで
   フェードアウトしてstopする仕組みを追加(`tone()`/`sfx`オブジェクトの

@@ -110,6 +110,34 @@
     background: radial-gradient(circle, rgba(255,255,255,.95), rgba(255,230,120,.5) 45%, transparent 72%);
     animation: ringpulse .9s ease-out; pointer-events: none;
   }
+  /* ===== タスク24: パチンコ筐体風の演出(LEDチェイス・リーチ・大当たりフラッシュ) =====
+     本物のパチンコ台の動画は見られないため、一般に知られている定番演出
+     （枠を這うLEDチェイスライト・リーチ中の点滅加速・大当たり確定フラッシュ）の
+     知識にもとづいて実装する。すべて prefers-reduced-motion（JSの reduced 変数）
+     ガード下。常時点灯は うるさいので、フィーバー中 or リーチ中(.stage.reach)
+     のときだけ光が流れるようにする。 */
+  .stage .ledchase {
+    position: absolute; inset: -3px; z-index: 4; border-radius: 26px; padding: 3px;
+    box-sizing: border-box; pointer-events: none; opacity: 0;
+    background: conic-gradient(from 0deg, transparent 0 78%, #fff 86%, #FFE66D 93%, transparent 99%);
+    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor; mask-composite: exclude;
+  }
+  .stage.fever .ledchase, .stage.reach .ledchase { opacity: 1; animation: ledchase .9s linear infinite; }
+  /* リーチ：正解はんてい 直前(sfx.riser()と同時)に、わく の 点滅を はやめて
+     ワクワク感を だす。.stage じたいの animation(ふるえ)とは ぶつからないように、
+     ::after(電飾わく)と .glow の ほうだけを はやく する。 */
+  .stage.reach::after { animation: lights .12s steps(2) infinite, reachGlow .12s steps(2) infinite; }
+  .stage.reach .glow { animation: flash .14s steps(2) infinite; }
+  /* 大当たり確定フラッシュ：パーフェクト/フィーバー達成時に 画面ぜんたいが
+     一瞬 明るく フラッシュする。眩しすぎないよう短く(300ms)、JS側で
+     reduced時は class を付けないようにして 完全にスキップする。 */
+  #bigflash {
+    position: fixed; inset: 0; z-index: 55; pointer-events: none;
+    background: radial-gradient(circle, rgba(255,255,255,.95), rgba(255,230,120,.7) 55%, transparent 85%);
+    opacity: 0;
+  }
+  #bigflash.go { animation: bigflash .3s ease-out; }
   .bunting {
     position: absolute; top: 6px; left: -4px; right: -4px; z-index: 1;
     display: flex; justify-content: space-between;
@@ -388,6 +416,10 @@
   @keyframes ringpulse {
     0% { transform: scale(.3); opacity: .9; } 100% { transform: scale(1.8); opacity: 0; }
   }
+  /* ===== タスク24: パチンコ筐体風の演出 用キーフレーム ===== */
+  @keyframes ledchase { to { transform: rotate(360deg); } }
+  @keyframes reachGlow { 50% { filter: brightness(1.7) saturate(1.5); } }
+  @keyframes bigflash { 0% { opacity: 0; } 35% { opacity: 1; } 100% { opacity: 0; } }
   @keyframes spin-in { from { transform: scale(.2) rotate(-240deg); } }
   @keyframes floatup { from { opacity: 1; } to { opacity: 0; transform: translate(-50%, -160%) scale(1.3); } }
   /* ===== うみ の 背景（ページ全体・つねに うごく） ===== */
@@ -566,6 +598,9 @@
 
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; }
+    /* タスク24: LEDチェイスライトは、フィーバー中であっても reduced-motion では
+       完全に消す（止まった光の輪が一瞬見えるだけでも避けたいため）。 */
+    .ledchase { opacity: 0 !important; }
   }
   @media (max-width: 370px) { .key { min-height: 52px; font-size: 1.6rem; } .slots span { width: 52px; height: 60px; font-size: 2.2rem; } }
 </style>
@@ -745,6 +780,7 @@
   </section>
 </div>
 <canvas id="fx"></canvas>
+<div id="bigflash" aria-hidden="true"></div>
 
 <script>
 // ============================================================
@@ -931,7 +967,7 @@ function buildStage(el) {
     <span class="swim" style="top:14%;animation:swimL ${swimDur1}s linear infinite;animation-delay:-${Math.random() * swimDur1}s">🐟</span>
     <span class="swim" style="top:32%;animation:swimR ${swimDur2}s linear infinite;animation-delay:-${Math.random() * swimDur2}s">🐠</span>
     <div class="crew" data-n="${friendCountForLevel(loveLevel())}">${crewMarkup(friendCountForLevel(loveLevel()))}</div>
-    <div class="banner"></div>`);
+    <div class="banner"></div><i class="ledchase" aria-hidden="true"></i>`);
   // おともだちの にんずうぶん うごきを すこし ずらすと いきいき 見える
   el.querySelectorAll(".tako").forEach((t, i) => t.querySelectorAll(".bob, .ear").forEach((g) => (g.style.animationDelay = `${i * -0.7}s`)));
   wireHeroClick(el);
@@ -1010,6 +1046,16 @@ function banner(stageEl, text, fever) {
   b.classList.remove("show");
   void b.offsetWidth;
   b.classList.add("show");
+}
+// タスク24: 大当たり確定フラッシュ（パーフェクト/フィーバー達成時、画面ぜんたいが
+// 一瞬だけ明るくフラッシュする）。光過敏な子への配慮で、reduced時は完全にスキップする。
+const bigflashEl = $("bigflash");
+function bigFlash() {
+  if (reduced || !bigflashEl) return;
+  bigflashEl.classList.remove("go");
+  void bigflashEl.offsetWidth;
+  bigflashEl.classList.add("go");
+  setTimeout(() => bigflashEl.classList.remove("go"), 320);
 }
 
 // ============================================================
@@ -2127,6 +2173,12 @@ function judge(ok, btn) {
     const [x, y] = centerOf($("card"));
     burst(x, y, fever ? 36 : 20);
     floatText(x, y - 20, `+${gain}`);
+    // タスク24: リーチ演出。sfx.riser()(約350msのドラムロール風ライザー)と
+    // 同時に「reach」クラスを付け、わくの点滅を加速させる(見た目のみ、採点には無関係)。
+    if (!reduced) {
+      stage.classList.remove("reach"); void stage.offsetWidth; stage.classList.add("reach");
+      setTimeout(() => stage.classList.remove("reach"), 420);
+    }
     sfx.correctChain(); // タスク23: riser+ok+coinを1つの世代として鳴らす(互いに打ち切らない)
     bumpCoins();
     mood(stage, "happy", true);
@@ -2137,7 +2189,8 @@ function judge(ok, btn) {
       void stage.offsetWidth;
       stage.classList.add(fever ? "feverShake" : game.combo === 2 ? "comboShake" : "okshake");
     }
-    if (game.combo === 3) { stage.classList.add("fever"); sfx.fever(); }
+    // タスク24: フィーバー突入は「大当たり確定」なので、画面フラッシュで盛り上げる。
+    if (game.combo === 3) { stage.classList.add("fever"); sfx.fever(); bigFlash(); }
     else if (game.combo === 2) { sfx.comboPing(); }
     banner(stage, fever ? "フィーバー！" : game.combo === 2 ? "2れんぞく！" : pick(["せいかい！", "すごい！", "やったね！"]), fever);
     speak(game.combo === 3 ? "フィーバー！ " + game.q.praise : game.q.praise, "praise");
@@ -2145,7 +2198,7 @@ function judge(ok, btn) {
     setTimeout(() => { game.index++; game.index < ROUND ? nextQuestion() : finish(); }, 1800);
   } else {
     game.ng++; game.combo = 0; game.missed = true;
-    stage.classList.remove("fever");
+    stage.classList.remove("fever", "reach");
     btn?.classList.add("ng");
     const card = $("card");
     card.classList.remove("shake"); void card.offsetWidth; card.classList.add("shake");
@@ -2180,6 +2233,8 @@ function finish() {
         hero.classList.remove("superjump"); void hero.offsetWidth; hero.classList.add("superjump");
         setTimeout(() => hero.classList.remove("superjump"), 1300);
       }
+      // タスク24: パーフェクト＝大当たり確定なので、画面フラッシュで仕上げる。
+      bigFlash();
     }
   }, 100);
   confetti(perfect ? 90 : 50, perfect);
