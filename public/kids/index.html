@@ -389,6 +389,30 @@
   .battlebars .fe { font-size: 1.4rem; line-height: 1; }
   .battlebars .hpbar { flex: 1; }
 
+  /* ===== タスク26: なかまの けいけんち・レベルアップ・成長演出 ===== */
+  .hpbar.exp { background: #FFF3D6; }
+  .hpbar.exp i { background: linear-gradient(90deg, #FFB020, #FFD966); }
+  .partyGrid button .hpbar.exp { width: 100%; margin-top: 2px; }
+  /* 節目のレベル(3・6・9)に とどいた なかまは、絵文字を ひとまわり おおきく
+     し、わくを 金色に光らせる(新しい画像生成は せず、既存のCSSの範囲で)。 */
+  .partyGrid button.grown { border-color: var(--gold); box-shadow: 0 0 0 3px rgba(255, 211, 77, .45); }
+  .partyGrid button.grown .fe { font-size: 2.3rem; }
+  .vs .fighter.grown { border-color: var(--gold); box-shadow: 0 0 0 3px rgba(255, 211, 77, .45); }
+  .vs .fighter.grown .fe { font-size: 3rem; }
+  .growthBadge {
+    position: absolute; top: -8px; right: 2px; font-size: 1.1rem; line-height: 1;
+    filter: drop-shadow(0 2px 2px rgba(0, 0, 0, .3)); z-index: 2;
+  }
+  .partyGrid button { position: relative; }
+  .vs .fighter { position: relative; }
+  .vs .fighter #battleAllyLv, .vs .fighter small#battleAllyLv { font-size: .7rem; color: var(--gold); }
+  @keyframes levelUpFlash {
+    0% { transform: scale(1); filter: brightness(1); }
+    30% { transform: scale(1.12); filter: brightness(1.4) drop-shadow(0 0 10px #FFD34D); }
+    100% { transform: scale(1); filter: brightness(1); }
+  }
+  .levelUpFlash { animation: levelUpFlash .7s ease-out; }
+
   /* +1 の うきあがる 文字 */
   .plus {
     position: fixed; z-index: 60; pointer-events: none; transform: translate(-50%, -50%);
@@ -841,10 +865,13 @@
     </div>
     <div class="vs">
       <div class="fighter" id="battleAllyCard">
+        <small class="growthBadge" id="battleAllyBadge"></small>
         <span class="fe" id="battleAllyEmoji"></span>
         <div class="hpbar"><i id="battleAllyHpFill"></i></div>
         <small id="battleAllyHpText"></small>
         <small id="battleAllyStats"></small>
+        <small id="battleAllyLv"></small>
+        <div class="hpbar sm exp"><i id="battleAllyExpFill"></i></div>
       </div>
       <span class="vstext">VS</span>
       <div class="fighter" id="battleEnemyCard">
@@ -914,6 +941,8 @@ const state = {
   // ステータス(HP/ATK/DEF/SPD)は statsFor() で いつでも さいげん できるので、
   // ここには しゅるいだけ保存し、保存データを ふくらませない。
   party: store.get("mk.party", []),
+  // タスク26: なかまの しゅるいごとの けいけんち(EXP)。{ "🐬": 120, ... }
+  partyExp: store.get("mk.partyExp", {}),
   coins: store.get("mk.coins", 0),
   owned: store.get("mk.owned", ["pink"]),
   equip: store.get("mk.equip", { head: null, face: null, hold: null, color: "pink" }),
@@ -943,6 +972,74 @@ function statsFor(emoji) {
     def: 2 + (Math.floor(h / 128) % 6), // 2〜7
     spd: 3 + (Math.floor(h / 1024) % 8), // 3〜10
   };
+}
+
+// ============================================================
+//  タスク26: なかまの けいけんち(EXP)・レベルアップ・成長演出
+//  LOVE_STEPS(タスク14)と おなじ パターン(しきい値はいれつ方式)で、
+//  なかまの しゅるいごとの EXPから レベルを さいげんする。
+//  state.partyExp = { "🐬": 120, ... } に しゅるいごとの EXPを つみあげ、
+//  statsFor()の きほん値に レベル分の ボーナスを のせた さいしゅう値を
+//  finalStatsFor()で かえす(statsFor()自体は かえない)。
+// ============================================================
+const EXP_STEPS = [0, 20, 45, 80, 125, 180, 250, 330, 430, 550]; // レベル1〜10
+const EXP_WIN = 30; // バトルに かつと もらえる まとまった EXP
+const EXP_HIT = 3; // なかまの こうげきが ヒットするたびに もらえる すこしの EXP
+const GROWTH_MILESTONES = [3, 6, 9]; // 成長演出(バッジ)が つく レベル
+function expFor(emoji) {
+  return state.partyExp[emoji] || 0;
+}
+function levelFor(exp) {
+  let lv = 1;
+  for (let i = 1; i < EXP_STEPS.length; i++) if (exp >= EXP_STEPS[i]) lv = i + 1;
+  return Math.min(lv, EXP_STEPS.length);
+}
+function levelForEmoji(emoji) {
+  return levelFor(expFor(emoji));
+}
+// いまの レベルの なかでの EXPの すすみ具合(0〜1)。レベルバーの 表示用。
+function expProgress(exp) {
+  const lv = levelFor(exp);
+  if (lv >= EXP_STEPS.length) return 1;
+  const lo = EXP_STEPS[lv - 1], hi = EXP_STEPS[lv];
+  return Math.max(0, Math.min(1, (exp - lo) / (hi - lo)));
+}
+// レベルに おうじた ステータスボーナス。レベル1は ボーナス0、1レベル上がる
+// たびに HP+2/こうげき+1/ぼうぎょ+1/すばやさ+1。
+function levelBonus(lv) {
+  const n = Math.max(0, lv - 1);
+  return { hp: n * 2, atk: n, def: n, spd: n };
+}
+// statsFor()の きほん値 ＋ レベルボーナスを あわせた さいしゅうステータス。
+// バトル・なかま一覧の 表示・計算は すべて これを つかう(statsForは そのまま)。
+function finalStatsFor(emoji) {
+  const base = statsFor(emoji);
+  const bonus = levelBonus(levelForEmoji(emoji));
+  return {
+    hp: base.hp + bonus.hp,
+    atk: base.atk + bonus.atk,
+    def: base.def + bonus.def,
+    spd: base.spd + bonus.spd,
+  };
+}
+// 成長演出: 節目(3・6・9)に とどいた レベルに おうじた バッジ文字。
+// 新しい画像は つくらず、既存の絵文字を かさねるだけ。
+function growthBadge(lv) {
+  if (lv >= 9) return "👑";
+  if (lv >= 6) return "⭐";
+  if (lv >= 3) return "✨";
+  return "";
+}
+// しゅるい(emoji)に EXPを くわえる。レベルが 節目を こえたら true を かえす
+// (成長演出の トリガー判定用)。
+function addPartyExp(emoji, amount) {
+  const before = levelForEmoji(emoji);
+  state.partyExp[emoji] = expFor(emoji) + amount;
+  store.set("mk.partyExp", state.partyExp);
+  const after = levelForEmoji(emoji);
+  const leveledUp = after > before;
+  const hitMilestone = leveledUp && GROWTH_MILESTONES.includes(after);
+  return { before, after, leveledUp, hitMilestone };
 }
 
 // ============================================================
@@ -2376,15 +2473,24 @@ function finish() {
   // ここだけ 分岐させる(新しい通貨・新しい演出ライブラリは つくらない)。
   if (game.battle) {
     const win = !!game.battle.win;
+    // タスク26: バトルに かつと、たたかった なかまに まとまった EXPを あげる。
+    // 既存の かち/まけ判定(上の game.battle.win)は いじらず、EXP加算だけを足す。
+    let battleGrowth = null;
+    if (win && game.battle.ally) battleGrowth = addPartyExp(game.battle.ally.emoji, EXP_WIN);
     const sticker = pick(STICKERS);
     state.stickers.push(sticker); store.set("mk.stickers", state.stickers);
     $("stars").innerHTML = Array.from({ length: ROUND }, (_, i) =>
       `<span class="${i < game.stars ? "" : "off"}" style="animation-delay:${0.3 + i * 0.15}s">★</span>`).join("");
     $("prize").textContent = sticker;
-    $("earnText").innerHTML = `${win ? "バトル かち！" : "バトル まけちゃった…"}<br>シール ゲット！<br>🐚 +${game.earned}`;
+    // タスク26: かったときは EXP/レベルの けっかも けっか画面に 足す。
+    const growthLine = battleGrowth
+      ? `<br>${game.battle.ally.emoji} けいけんち +${EXP_WIN}${battleGrowth.leveledUp ? `　Lvあっぷ！ Lv${battleGrowth.after}${battleGrowth.hitMilestone ? " " + growthBadge(battleGrowth.after) : ""}` : ""}`
+      : "";
+    $("earnText").innerHTML = `${win ? "バトル かち！" : "バトル まけちゃった…"}<br>シール ゲット！<br>🐚 +${game.earned}${growthLine}`;
     show("result");
     renderHud();
     stage.classList.toggle("fever", win);
+    if (battleGrowth && battleGrowth.hitMilestone) growthFlash(game.battle.ally.emoji);
     setTimeout(() => {
       banner(stage, win ? "かち！" : "まけちゃった…", win);
       mood(stage, win ? "happy" : "sad", win);
@@ -2478,10 +2584,14 @@ function openParty() {
   } else {
     empty.hidden = true;
     grid.innerHTML = state.party.map((emoji) => {
-      const st = statsFor(emoji);
-      return `<button type="button" data-emoji="${emoji}">
+      const st = finalStatsFor(emoji);
+      const lv = levelForEmoji(emoji);
+      const badge = growthBadge(lv);
+      return `<button type="button" class="${badge ? "grown" : ""}" data-emoji="${emoji}">
+        ${badge ? `<small class="growthBadge">${badge}</small>` : ""}
         <span class="fe">${emoji}</span>
-        <small>HP${st.hp} こう${st.atk} ぼう${st.def} すば${st.spd}</small>
+        <small>Lv${lv} HP${st.hp} こう${st.atk} ぼう${st.def} すば${st.spd}</small>
+        <div class="hpbar sm exp"><i style="width:${Math.round(expProgress(expFor(emoji)) * 100)}%"></i></div>
       </button>`;
     }).join("");
     grid.querySelectorAll("button[data-emoji]").forEach((btn) => {
@@ -2500,7 +2610,9 @@ function openBattle(allyEmoji) {
 }
 function renderBattleSetup() {
   if (!battleSetup) return;
-  const ally = statsFor(battleSetup.allyEmoji), enemy = statsFor(battleSetup.enemyEmoji);
+  const ally = finalStatsFor(battleSetup.allyEmoji), enemy = statsFor(battleSetup.enemyEmoji);
+  const allyLv = levelForEmoji(battleSetup.allyEmoji);
+  const badge = growthBadge(allyLv);
   $("battleAllyEmoji").textContent = battleSetup.allyEmoji;
   $("battleEnemyEmoji").textContent = battleSetup.enemyEmoji;
   $("battleAllyStats").textContent = `HP${ally.hp} こう${ally.atk} ぼう${ally.def} すば${ally.spd}`;
@@ -2511,13 +2623,17 @@ function renderBattleSetup() {
   $("battleEnemyHpFill").parentElement.classList.remove("danger");
   $("battleAllyHpText").textContent = `${ally.hp}/${ally.hp}`;
   $("battleEnemyHpText").textContent = `${enemy.hp}/${enemy.hp}`;
+  $("battleAllyLv").textContent = `Lv${allyLv}`;
+  $("battleAllyExpFill").style.width = `${Math.round(expProgress(expFor(battleSetup.allyEmoji)) * 100)}%`;
+  $("battleAllyBadge").textContent = badge;
+  $("battleAllyCard").classList.toggle("grown", !!badge);
 }
 // バトル画面で もんだいの しゅるいを タップしたら、じっさいに その問題で
 // プレイを はじめる。既存の startGame()を そのまま つかい、game.battle を
 // あとから つけたすだけ(新しい並列の採点ロジックは つくらない)。
 function beginBattleRound(key) {
   if (!battleSetup) return;
-  const allyStats = statsFor(battleSetup.allyEmoji), enemyStats = statsFor(battleSetup.enemyEmoji);
+  const allyStats = finalStatsFor(battleSetup.allyEmoji), enemyStats = statsFor(battleSetup.enemyEmoji);
   startGame(key);
   game.battle = {
     ally: { emoji: battleSetup.allyEmoji, stats: allyStats, hp: allyStats.hp, maxHp: allyStats.hp },
@@ -2550,11 +2666,31 @@ function battleAttack(attacker, defender) {
   if (atkIsFaster && Math.random() < 0.3) dmg = Math.round(dmg * 1.5);
   defender.hp = Math.max(0, defender.hp - dmg);
   sfx.attack();
+  // タスク26: じぶんの なかまの こうげきが ヒットするたびに すこしの EXPを もらう。
+  // 既存の ダメージ計算・勝敗判定(上の処理)は そのまま、EXP加算だけを足す。
+  if (game.battle && attacker === game.battle.ally) {
+    const r = addPartyExp(attacker.emoji, EXP_HIT);
+    if (r.hitMilestone) growthFlash(attacker.emoji);
+  }
   renderBattleBars();
   if (defender.hp <= 0) {
     game.battle.over = true;
     game.battle.win = defender === game.battle.enemy;
   }
+}
+// タスク26: 節目の レベル(3・6・9)に とどいた ときの ちょっとした 成長演出。
+// 新しい画像は つくらず、既存の confetti/banner の しくみを ながせる範囲で つかう。
+function growthFlash(emoji) {
+  // バトル中(gbAllyEmoji が 見えている)なら そちらを、けっか画面なら
+  // battleAllyCard を 光らせる。どちらも hidden でなければ そのまま つかう。
+  const gb = $("gbAllyEmoji");
+  const visible = gb && gb.closest("[hidden]") === null ? gb : $("battleAllyCard");
+  const target = visible || $("battleAllyCard") || gb;
+  if (target && !reduced) {
+    target.classList.remove("levelUpFlash"); void target.offsetWidth; target.classList.add("levelUpFlash");
+  }
+  if (!reduced) confetti(20, true);
+  speak(`${emoji}が レベルアップ！ つよくなったよ！`, "praise");
 }
 
 // ============================================================
@@ -2801,6 +2937,7 @@ function collectSaveData() {
     levelIdx: state.levelIdx,
     sound: state.sound,
     party: state.party,
+    partyExp: state.partyExp,
   };
 }
 function applySaveData(data) {
@@ -2808,6 +2945,7 @@ function applySaveData(data) {
   if (typeof data.coins === "number") state.coins = data.coins;
   if (Array.isArray(data.stickers)) state.stickers = data.stickers;
   if (Array.isArray(data.party)) state.party = data.party;
+  if (data.partyExp && typeof data.partyExp === "object") state.partyExp = data.partyExp;
   if (Array.isArray(data.owned)) state.owned = data.owned;
   if (data.equip && typeof data.equip === "object") state.equip = data.equip;
   if (typeof data.love === "number") state.love = data.love;
@@ -2820,6 +2958,7 @@ function applySaveData(data) {
   store.set("mk.coins", state.coins);
   store.set("mk.stickers", state.stickers);
   store.set("mk.party", state.party);
+  store.set("mk.partyExp", state.partyExp);
   store.set("mk.owned", state.owned);
   store.set("mk.equip", state.equip);
   store.set("mk.love", state.love);
