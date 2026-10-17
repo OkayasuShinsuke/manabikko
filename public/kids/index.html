@@ -1251,6 +1251,30 @@ function speak(text, mood = "ask") {
   speakNextInQueue();
 }
 let audio = null;
+// 効果音の「後勝ち」制御：sfx.xxx() の呼び出しごとに世代(generation)を1つ進め、
+// 直前の世代に属するまだ鳴っているノードだけを短時間でフェードアウトして打ち切る。
+// 同じ世代（＝同じsfx呼び出し内）の複数tone()/chord()は互いに打ち切らない。
+let sfxGen = 0;
+let activeSfxNodes = []; // [{ gen, osc, gain, stopTime }]
+function cutPreviousSfxGeneration() {
+  if (!audio) return;
+  const now = audio.currentTime;
+  const FADE = 0.03; // 30ms で素早くフェードアウトしてから停止
+  activeSfxNodes = activeSfxNodes.filter((n) => {
+    if (n.stopTime <= now) return false; // 自然に鳴り終わったノードは掃除
+    if (n.gen < sfxGen) {
+      try {
+        const g = n.gain.gain;
+        g.cancelScheduledValues(now);
+        g.setValueAtTime(g.value, now);
+        g.linearRampToValueAtTime(0.0001, now + FADE);
+        n.osc.stop(now + FADE + 0.005);
+      } catch {}
+      return false; // 打ち切り済みなので追跡対象から外す
+    }
+    return true; // 現在の世代の、まだ鳴っているノードは残す
+  });
+}
 function tone(freq, start, dur, type = "sine", vol = 0.18) {
   if (!state.sound) return;
   try {
@@ -1259,6 +1283,7 @@ function tone(freq, start, dur, type = "sine", vol = 0.18) {
     o.type = type; o.frequency.value = freq;
     g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.001, t + dur);
     o.connect(g).connect(audio.destination); o.start(t); o.stop(t + dur);
+    activeSfxNodes.push({ gen: sfxGen, osc: o, gain: g, stopTime: t + dur });
   } catch {}
 }
 // パチンコの「揃う直前」演出っぽい ライザー：短い ブリップが 低音から 高音へ 駆け上がる
@@ -1299,6 +1324,17 @@ const sfx = {
     chord(1175, 0.36, 0.4, "square", 0.1);
   },
 };
+// sfx の各メソッドを薄くラップして「後勝ち」を実現する。打ち切り単位は
+// sfx.xxx() の呼び出し単位（＝ここで世代を進めるタイミング）であり、
+// 呼び出し側（judge() 等）・各メソッドの内容（音色・長さ）は変更しない。
+Object.keys(sfx).forEach((name) => {
+  const original = sfx[name];
+  sfx[name] = function (...args) {
+    sfxGen++;
+    cutPreviousSfxGeneration();
+    return original.apply(this, args);
+  };
+});
 
 // ============================================================
 //  もんだいの データ
