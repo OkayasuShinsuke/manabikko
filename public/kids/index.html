@@ -28,6 +28,12 @@
     --display: "Dela Gothic One", "Hiragino Maru Gothic ProN", "Hiragino Sans", sans-serif;
     --body: "M PLUS Rounded 1c", "Hiragino Maru Gothic ProN", "Hiragino Sans", "Yu Gothic", sans-serif;
     color-scheme: light;
+    /* 画面幅に応じてルートのフォントサイズを可変にする（タスク25）。
+       390px前後のスマホでは16px(ブラウザ既定)のまま変わらず、
+       タブレット・PCの広い画面では文字・余白・ボタン(remベース)が
+       比例して大きく見えるようにする。22pxで上限を設け、4K等の
+       極端に大きい画面でも文字が巨大になりすぎないようにする。 */
+    font-size: clamp(16px, 0.45vw + 14px, 22px);
   }
   [hidden] { display: none !important; }
   html, body { height: 100%; }
@@ -46,7 +52,9 @@
     overscroll-behavior: none;
   }
   .app {
-    max-width: 560px; margin: 0 auto; box-sizing: border-box;
+    /* 390px等のスマホでは常に560px以下なので従来と同じ(max()の560pxが効く)。
+       画面が広いときだけ94vw（800px上限）まで広がる（タスク25）。 */
+    max-width: max(560px, min(94vw, 800px)); margin: 0 auto; box-sizing: border-box;
     padding-inline: 16px; padding-block: 10px 20px;
     min-height: 100%;
   }
