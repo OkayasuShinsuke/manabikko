@@ -635,6 +635,10 @@
   .food-btn.ng { opacity: .5; pointer-events: none; }
   .flying-food { position: fixed; z-index: 70; font-size: 1.8rem; pointer-events: none; transition: left .7s cubic-bezier(.3,.6,.3,1), top .7s cubic-bezier(.3,.6,.3,1), transform .7s, opacity .7s; }
 
+  /* ===== タスク27: バトル中の どうぐ パネル ===== */
+  .itemPanel { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 0 0 8px; }
+  .itemPanel .note { grid-column: 1 / -1; margin: 0; }
+
   /* ===== スライドパズル：クリックのみ(ドラッグなし)の 15パズルふう =====
      タイルは 1枚の えがら(SVG)を かくれんぼさせる標準テク：各タイルを
      overflow:hidden の はこ にして、中に ぜんたい絵の コピーを
@@ -698,6 +702,7 @@
       <button class="key k1" id="bookBtn"><span><span class="e">🐋</span>シールちょう<small id="bookCount">0まい</small></span></button>
       <button class="key k3" id="puzzleBtn"><span><span class="e">🧩</span>パズル<small>メンちゃんを そろえよう</small></span></button>
       <button class="key k2" id="partyBtn"><span><span class="e">⚔️</span>なかま バトル<small>シールを なかまに しよう</small></span></button>
+      <button class="key k1" id="armoryBtn"><span><span class="e">🛡️</span>そうび<small>ぶき・ぼうぐ・どうぐ</small></span></button>
     </div>
     <p class="note">おうちの かたへ：もんだいは こえで よみあげます。iPhone は マナーモードを かいじょ して ください。<br>メンちゃんを タッチすると おはなし するよ。<br>（PCで VOICEVOX を起動していると、よりなめらかな音声で読み上げます。未起動でも自動でブラウザの読み上げに切り替わります）<br><small>おんせい: VOICEVOX:ずんだもん</small></p>
   </section>
@@ -716,7 +721,11 @@
     <div class="battlebars" id="battleBars" hidden>
       <div class="bbrow"><span class="fe" id="gbAllyEmoji"></span><div class="hpbar"><i id="gbAllyHpFill"></i></div></div>
       <div class="bbrow"><span class="fe" id="gbEnemyEmoji"></span><div class="hpbar"><i id="gbEnemyHpFill"></i></div></div>
+      <!-- タスク27: バトル中に かいふくアイテムを つかう ボタン。judge()の
+           採点ロジックとは べつの、どくりつした ボタン操作。 -->
+      <button class="round" id="useItemBtn" aria-label="どうぐを つかう">🎒</button>
     </div>
+    <div class="itemPanel" id="itemPanel" hidden></div>
     <div class="stage" data-stage></div>
     <div class="marquee">
       <div class="card" id="card">
@@ -897,6 +906,23 @@
       <button class="key k3" data-game="fish" data-minlv="1"><span><span class="e">🐳</span>うみのいきもの<small>なまえは なにかな</small></span></button>
     </div>
   </section>
+
+  <!-- ===== タスク27: そうび(ぶき・ぼうぐ・かいふくどうぐ) ===== -->
+  <section id="armory" hidden>
+    <div class="hud">
+      <button class="round" id="armoryBack" aria-label="ホームへ もどる">🐳</button>
+      <h1>そうび</h1>
+      <span class="pill coin">🐚 <b class="coinNum">0</b></span>
+      <span class="pill" id="armoryStickerPill">🐋 <b>0</b>まい</span>
+    </div>
+    <p class="note">かった ぶき・ぼうぐは タップで そうびできるよ。バトルで つよくなるよ！<br>かいふくアイテムは バトル中に 🎒ボタンで つかえるよ。</p>
+    <div class="tabs" id="armoryTabs" role="group" aria-label="しゅるい">
+      <button data-cat="weapon" aria-pressed="true">ぶき</button>
+      <button data-cat="armor" aria-pressed="false">ぼうぐ</button>
+      <button data-cat="heal" aria-pressed="false">かいふく</button>
+    </div>
+    <div class="shopgrid" id="armoryGrid"></div>
+  </section>
 </div>
 <canvas id="fx"></canvas>
 <div id="bigflash" aria-hidden="true"></div>
@@ -948,6 +974,13 @@ const state = {
   equip: store.get("mk.equip", { head: null, face: null, hold: null, color: "pink" }),
   love: store.get("mk.love", 0),
   lastFed: store.get("mk.fed", 0),
+  // タスク27: ぶき/ぼうぐの そうび(1つずつ)。きせかえの state.equip とは
+  // べつもの(こんどう しないよう べつめいに する)。
+  equip2: store.get("mk.equip2", { weapon: null, armor: null }),
+  // タスク27: 購入済みの EQUIP_ITEMS(ぶき/ぼうぐ)の id いちらん。
+  ownedEquip: store.get("mk.ownedEquip", []),
+  // タスク27: かいふくアイテムの もちもの数。例: { "herb": 2, "potion": 1 }
+  healInventory: store.get("mk.healInventory", {}),
 };
 let lastPet = 0;
 // タスク22: バトル設定の いま えらんでいる あいて( なかま一覧→バトル画面に いく ときに セットする)
@@ -1022,6 +1055,21 @@ function finalStatsFor(emoji) {
     spd: base.spd + bonus.spd,
   };
 }
+// タスク27: いま そうびしている ぶき/ぼうぐの ATK/DEFボーナス。
+// どちらも つけていなければ 0。
+function equippedGearBonus() {
+  const w = EQUIP_ITEMS.find((i) => i.id === state.equip2.weapon);
+  const a = EQUIP_ITEMS.find((i) => i.id === state.equip2.armor);
+  return { atk: (w && w.atk) || 0, def: (a && a.def) || 0 };
+}
+// finalStatsFor()の 結果(きほん値＋レベルボーナス)に、そうびボーナスを
+// さらに あわせた さいしゅうステータス。バトルの ときだけ これを つかい、
+// finalStatsFor()自体は かえない(うすい かさねレイヤーとして ついかする)。
+function battleStatsFor(emoji) {
+  const base = finalStatsFor(emoji);
+  const bonus = equippedGearBonus();
+  return { hp: base.hp, atk: base.atk + bonus.atk, def: base.def + bonus.def, spd: base.spd };
+}
 // 成長演出: 節目(3・6・9)に とどいた レベルに おうじた バッジ文字。
 // 新しい画像は つくらず、既存の絵文字を かさねるだけ。
 function growthBadge(lv) {
@@ -1087,6 +1135,31 @@ const FOODS = [
   { id: "straw", emoji: "🍓", name: "いちご", shell: 3, love: 3 },
   { id: "donut", emoji: "🍩", name: "どーなつ", shell: 5, love: 5 },
   { id: "cake", emoji: "🍰", name: "けーき", shell: 8, love: 9 },
+];
+// ============================================================
+//  タスク27: ぶき・ぼうぐ・かいふくアイテム(バトルよう)
+//  既存のITEMS/FOODSとは べつの配列・べつのstateフィールドで かんりする
+//  (きせかえ・ごはんシステムと こんどうしない)。コイン/シールの 通貨は
+//  既存の ものを そのまま つかう(新しい通貨は つくらない)。
+// ============================================================
+const EQUIP_ITEMS = [
+  { id: "stick", name: "きのぼう", emoji: "🥢", slot: "weapon", atk: 2, price: { shell: 6 } },
+  { id: "hammer", name: "こんぼう", emoji: "🔨", slot: "weapon", atk: 4, price: { shell: 14 } },
+  { id: "sword", name: "けん", emoji: "⚔️", slot: "weapon", atk: 6, price: { shell: 24 } },
+  { id: "spear", name: "やり", emoji: "🔱", slot: "weapon", atk: 8, price: { shell: 32 } },
+  { id: "bow", name: "ゆみ", emoji: "🏹", slot: "weapon", atk: 10, price: { sticker: 4 } },
+  { id: "gauntlet", name: "ひかりのて", emoji: "🥊", slot: "weapon", atk: 12, price: { shell: 40 } },
+  { id: "cloth", name: "ぬののふく", emoji: "👕", slot: "armor", def: 2, price: { shell: 6 } },
+  { id: "leather", name: "かわのふく", emoji: "🧥", slot: "armor", def: 4, price: { shell: 14 } },
+  { id: "shield", name: "たて", emoji: "🛡️", slot: "armor", def: 6, price: { shell: 24 } },
+  { id: "helm", name: "てつかぶと", emoji: "⛑️", slot: "armor", def: 8, price: { shell: 32 } },
+  { id: "chainmail", name: "くさりかたびら", emoji: "🥋", slot: "armor", def: 10, price: { sticker: 4 } },
+  { id: "dragonarmor", name: "りゅうのよろい", emoji: "🐲", slot: "armor", def: 12, price: { shell: 40 } },
+];
+const HEAL_ITEMS = [
+  { id: "herb", name: "やくそう", emoji: "🌿", heal: 8, price: { shell: 4 } },
+  { id: "potion", name: "かいふくのみず", emoji: "🧪", heal: 16, price: { shell: 10 } },
+  { id: "elixir", name: "きらめきのみ", emoji: "✨", heal: 30, price: { shell: 20 } },
 ];
 const LOVE_STEPS = [0, 5, 15, 30, 50, 80, 120, 170, 230, 300];
 function loveLevel() {
@@ -2203,10 +2276,11 @@ const GAMES = {
 //  がめんの きりかえ と HUD
 // ============================================================
 function show(id) {
-  ["home", "game", "result", "book", "shop", "feed", "transfer", "puzzle", "party", "battle"].forEach((s) => ($(s).hidden = s !== id));
+  ["home", "game", "result", "book", "shop", "feed", "transfer", "puzzle", "party", "battle", "armory"].forEach((s) => ($(s).hidden = s !== id));
   if (id === "home") updateHungryBubble();
   if (id === "shop") renderShop();
   if (id === "feed") renderFoods();
+  if (id === "armory") renderArmory();
   scrollTo(0, 0);
 }
 function renderLovePanel(el) {
@@ -2303,6 +2377,8 @@ function startGame(key) {
   // バーを ひょうじする。
   const bars = $("battleBars");
   if (bars) bars.hidden = true;
+  const panel = $("itemPanel");
+  if (panel) panel.hidden = true;
   show("game");
   renderHud();
   nextQuestion();
@@ -2584,7 +2660,7 @@ function openParty() {
   } else {
     empty.hidden = true;
     grid.innerHTML = state.party.map((emoji) => {
-      const st = finalStatsFor(emoji);
+      const st = battleStatsFor(emoji);
       const lv = levelForEmoji(emoji);
       const badge = growthBadge(lv);
       return `<button type="button" class="${badge ? "grown" : ""}" data-emoji="${emoji}">
@@ -2610,7 +2686,7 @@ function openBattle(allyEmoji) {
 }
 function renderBattleSetup() {
   if (!battleSetup) return;
-  const ally = finalStatsFor(battleSetup.allyEmoji), enemy = statsFor(battleSetup.enemyEmoji);
+  const ally = battleStatsFor(battleSetup.allyEmoji), enemy = statsFor(battleSetup.enemyEmoji);
   const allyLv = levelForEmoji(battleSetup.allyEmoji);
   const badge = growthBadge(allyLv);
   $("battleAllyEmoji").textContent = battleSetup.allyEmoji;
@@ -2633,7 +2709,7 @@ function renderBattleSetup() {
 // あとから つけたすだけ(新しい並列の採点ロジックは つくらない)。
 function beginBattleRound(key) {
   if (!battleSetup) return;
-  const allyStats = finalStatsFor(battleSetup.allyEmoji), enemyStats = statsFor(battleSetup.enemyEmoji);
+  const allyStats = battleStatsFor(battleSetup.allyEmoji), enemyStats = statsFor(battleSetup.enemyEmoji);
   startGame(key);
   game.battle = {
     ally: { emoji: battleSetup.allyEmoji, stats: allyStats, hp: allyStats.hp, maxHp: allyStats.hp },
@@ -2784,6 +2860,134 @@ function buyOrEquip(item, btn) {
 }
 
 // ============================================================
+//  タスク27: そうび(ぶき・ぼうぐ)・かいふくアイテムの 購入/そうび
+//  既存の きせかえショップ(renderShop/buyOrEquip)と おなじ パターンを
+//  つかうが、state.equip2/state.ownedEquip/state.healInventory という
+//  べつの stateフィールドで かんりする(きせかえ・ごはんとは こんどうしない)。
+// ============================================================
+let armoryCat = "weapon";
+function renderArmory() {
+  const grid = $("armoryGrid");
+  $("armoryTabs").querySelectorAll("button").forEach((b) => b.setAttribute("aria-pressed", b.dataset.cat === armoryCat));
+  if (armoryCat === "heal") {
+    grid.innerHTML = HEAL_ITEMS.map((item) => {
+      const n = state.healInventory[item.id] || 0;
+      return `<button class="item" data-id="${item.id}">
+        <span class="e">${item.emoji}</span><span class="nm">${item.name}</span>
+        <span class="price">${priceLabel(item)}</span>
+        <small class="nm">HP+${item.heal}${n > 0 ? `　もってる${n}こ` : ""}</small>
+      </button>`;
+    }).join("");
+    grid.querySelectorAll(".item").forEach((btn) => {
+      btn.addEventListener("click", () => buyHeal(HEAL_ITEMS.find((i) => i.id === btn.dataset.id), btn));
+    });
+  } else {
+    const items = EQUIP_ITEMS.filter((i) => i.slot === armoryCat);
+    grid.innerHTML = items.map((item) => {
+      const owned = state.ownedEquip.includes(item.id);
+      const equipped = state.equip2[item.slot] === item.id;
+      let statusHtml;
+      if (equipped) statusHtml = `<span class="price">つけてる</span>`;
+      else if (owned) statusHtml = `<span class="price">もってる</span>`;
+      else statusHtml = `<span class="price">${priceLabel(item)}</span>`;
+      const power = item.slot === "weapon" ? `こうげき+${item.atk}` : `ぼうぎょ+${item.def}`;
+      return `<button class="item${owned ? " owned" : ""}${equipped ? " equip" : ""}" data-id="${item.id}">
+        <span class="e">${item.emoji}</span><span class="nm">${item.name}</span>${statusHtml}
+        <small class="nm">${power}</small>
+      </button>`;
+    }).join("");
+    grid.querySelectorAll(".item").forEach((btn) => {
+      btn.addEventListener("click", () => buyOrEquipGear(EQUIP_ITEMS.find((i) => i.id === btn.dataset.id), btn));
+    });
+  }
+  const pill = $("armoryStickerPill");
+  if (pill) pill.innerHTML = `🐋 <b>${state.stickers.length}</b>まい`;
+}
+function buyOrEquipGear(item, btn) {
+  const owned = state.ownedEquip.includes(item.id);
+  if (owned) {
+    sfx.tap();
+    state.equip2[item.slot] = state.equip2[item.slot] === item.id ? null : item.id;
+    store.set("mk.equip2", state.equip2);
+    renderArmory();
+    return;
+  }
+  if (!canAfford(item)) {
+    btn.classList.remove("shake"); void btn.offsetWidth; btn.classList.add("shake");
+    sfx.ng();
+    speak(item.price.shell != null ? "かいがらが たりないよ。 もんだいを といて あつめよう！" : "シールが たりないよ。 もんだいを といて あつめよう！");
+    return;
+  }
+  if (item.price.shell != null) { state.coins -= item.price.shell; store.set("mk.coins", state.coins); }
+  else { spendStickers(item.price.sticker); }
+  state.ownedEquip.push(item.id); store.set("mk.ownedEquip", state.ownedEquip);
+  state.equip2[item.slot] = item.id;
+  store.set("mk.equip2", state.equip2);
+  const [x, y] = centerOf(btn);
+  burst(x, y, 22);
+  sfx.coin();
+  speak(`${item.name}を ゲット！`);
+  renderHud();
+  renderArmory();
+}
+function buyHeal(item, btn) {
+  if (!canAfford(item)) {
+    btn.classList.remove("shake"); void btn.offsetWidth; btn.classList.add("shake");
+    sfx.ng();
+    speak(item.price.shell != null ? "かいがらが たりないよ。 もんだいを といて あつめよう！" : "シールが たりないよ。 もんだいを といて あつめよう！");
+    return;
+  }
+  if (item.price.shell != null) { state.coins -= item.price.shell; store.set("mk.coins", state.coins); }
+  else { spendStickers(item.price.sticker); }
+  state.healInventory[item.id] = (state.healInventory[item.id] || 0) + 1;
+  store.set("mk.healInventory", state.healInventory);
+  const [x, y] = centerOf(btn);
+  burst(x, y, 22);
+  sfx.coin();
+  speak(`${item.name}を ゲット！`);
+  renderHud();
+  renderArmory();
+}
+// タスク27: バトル中に かいふくアイテムを つかう ボタン/パネル。
+// judge()の 採点ロジックには ふれず、どくりつした ボタン操作として じっそう。
+function toggleItemPanel() {
+  const panel = $("itemPanel");
+  if (!panel.hidden) { panel.hidden = true; return; }
+  if (!game || !game.battle || game.battle.over) {
+    speak("いまは バトルちゅうじゃ ないよ");
+    return;
+  }
+  renderItemPanel();
+  panel.hidden = false;
+}
+function renderItemPanel() {
+  const panel = $("itemPanel");
+  const entries = HEAL_ITEMS.filter((h) => (state.healInventory[h.id] || 0) > 0);
+  if (entries.length === 0) {
+    panel.innerHTML = `<p class="note">かいふくアイテムを もっていないよ。「そうび」で かおう！</p>`;
+    return;
+  }
+  panel.innerHTML = entries.map((h) => `
+    <button class="food-btn" data-id="${h.id}"><span class="e">${h.emoji}</span><span class="price">HP+${h.heal}　${state.healInventory[h.id]}こ</span></button>`).join("");
+  panel.querySelectorAll(".food-btn").forEach((btn) => {
+    btn.addEventListener("click", () => useHealItem(HEAL_ITEMS.find((h) => h.id === btn.dataset.id)));
+  });
+}
+function useHealItem(item) {
+  if (!game || !game.battle || game.battle.over) return;
+  const n = state.healInventory[item.id] || 0;
+  if (n <= 0) return;
+  state.healInventory[item.id] = n - 1;
+  store.set("mk.healInventory", state.healInventory);
+  const ally = game.battle.ally;
+  ally.hp = Math.min(ally.maxHp, ally.hp + item.heal);
+  renderBattleBars();
+  sfx.coin();
+  speak(`${item.name}を つかったよ！ HPが かいふく したよ！`);
+  renderItemPanel();
+}
+
+// ============================================================
 //  ごはん・なかよし
 // ============================================================
 let feeding = false;
@@ -2922,6 +3126,13 @@ $("puzzleHomeBtn").addEventListener("click", () => { sfx.tap(); show("home"); })
 $("partyBtn").addEventListener("click", () => { sfx.tap(); openParty(); });
 $("partyBack").addEventListener("click", () => show("home"));
 $("battleBack").addEventListener("click", () => show("party"));
+// タスク27: そうび画面(ぶき・ぼうぐ・かいふくアイテム)
+$("armoryBtn").addEventListener("click", () => { sfx.tap(); show("armory"); });
+$("armoryBack").addEventListener("click", () => show("home"));
+$("armoryTabs").querySelectorAll("button").forEach((b) => {
+  b.addEventListener("click", () => { sfx.tap(); armoryCat = b.dataset.cat; renderArmory(); });
+});
+$("useItemBtn").addEventListener("click", () => { sfx.tap(); toggleItemPanel(); });
 
 // ---------- ひきつぎコード（複数端末セーブ転送） ----------
 // 注意: claude.ai の Artifact プレビューからは本物のサーバーに繋がらないため、
@@ -2938,6 +3149,9 @@ function collectSaveData() {
     sound: state.sound,
     party: state.party,
     partyExp: state.partyExp,
+    equip2: state.equip2,
+    ownedEquip: state.ownedEquip,
+    healInventory: state.healInventory,
   };
 }
 function applySaveData(data) {
@@ -2948,6 +3162,9 @@ function applySaveData(data) {
   if (data.partyExp && typeof data.partyExp === "object") state.partyExp = data.partyExp;
   if (Array.isArray(data.owned)) state.owned = data.owned;
   if (data.equip && typeof data.equip === "object") state.equip = data.equip;
+  if (data.equip2 && typeof data.equip2 === "object") state.equip2 = data.equip2;
+  if (Array.isArray(data.ownedEquip)) state.ownedEquip = data.ownedEquip;
+  if (data.healInventory && typeof data.healInventory === "object") state.healInventory = data.healInventory;
   if (typeof data.love === "number") state.love = data.love;
   if (typeof data.lastFed === "number") state.lastFed = data.lastFed;
   // ふるい ひきつぎデータ(level:"easy"/"hard")と あたらしい データ(levelIdx:数値)の どちらでも うごくように
@@ -2961,6 +3178,9 @@ function applySaveData(data) {
   store.set("mk.partyExp", state.partyExp);
   store.set("mk.owned", state.owned);
   store.set("mk.equip", state.equip);
+  store.set("mk.equip2", state.equip2);
+  store.set("mk.ownedEquip", state.ownedEquip);
+  store.set("mk.healInventory", state.healInventory);
   store.set("mk.love", state.love);
   store.set("mk.fed", state.lastFed);
   store.set("mk.level", state.levelIdx);
