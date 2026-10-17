@@ -413,6 +413,36 @@
   }
   .levelUpFlash { animation: levelUpFlash .7s ease-out; }
 
+  /* ===== タスク28: ボス戦(とくべつ感の あるVS画面・バトル画面) =====
+     新しい演出ライブラリは つくらず、既存の .ledchase(タスク24)・bigFlash()
+     ・.vs/.fighterの しくみを そのまま つかい、見た目の色・頻度だけを
+     ボス戦用に 強める。 */
+  #bossChallengeBtn {
+    width: 100%; margin-bottom: 10px; min-height: 68px; border: 3px solid var(--ink); border-radius: 18px;
+    box-shadow: 0 5px 0 #120D2B; background: linear-gradient(135deg, #3A1550, #7A1E4A); color: #FFD23F;
+    font-family: var(--body); font-weight: 800; font-size: 1.02rem; display: grid; place-items: center; padding: 6px;
+    transition: transform .06s;
+  }
+  #bossChallengeBtn:active { transform: translateY(4px); box-shadow: 0 1px 0 #120D2B; }
+  #bossChallengeBtn .e { font-size: 1.9rem; display: block; }
+  #bossChallengeBtn small { display: block; font-size: .66rem; font-weight: 600; color: #FFE9C2; margin-top: 2px; }
+  #bossChallengeBtn.locked { opacity: .5; filter: grayscale(.5); }
+  .bossTitle {
+    text-align: center; font-family: var(--display); font-weight: 400; font-size: 1.3rem;
+    color: #FF5C8A; -webkit-text-stroke: 2px var(--ink); paint-order: stroke fill; margin: 0 0 6px;
+    animation: wobble 2.4s ease-in-out infinite;
+  }
+  /* ボスせんの ときは VS画面の てきカードの いろを あかむらさき系に かえる */
+  #battle.bossfight .vs .fighter#battleEnemyCard {
+    background: #2B0F38; border-color: #FF5C8A; color: #fff; box-shadow: 0 0 0 3px rgba(255, 92, 138, .4);
+  }
+  #battle.bossfight .vs .fighter#battleEnemyCard small { color: #FFD9E6; }
+  #battle.bossfight .vs .vstext { color: #FF5C8A; }
+  /* ボスせん中の クイズ画面(.stage)は 背景を あかむらさき系にし、
+     LEDチェイス(タスク24)を フィーバー/リーチ待ちでなく つねに流す。 */
+  .stage.bossfight { background: #2B0F38; }
+  .stage.bossfight .ledchase { opacity: 1; animation: ledchase .5s linear infinite; }
+
   /* +1 の うきあがる 文字 */
   .plus {
     position: fixed; z-index: 60; pointer-events: none; transform: translate(-50%, -50%);
@@ -862,6 +892,11 @@
     </div>
     <p class="note" id="partyEmpty" hidden>まだ なかまが いないよ。シールちょうで シールを タップすると なかまに なるよ。</p>
     <p class="note">タップすると バトルに いけるよ</p>
+    <!-- タスク28: ボス戦への いりぐち。レベル3いじょうの なかまが いれば
+         ちょうせんできる(詳しくは関数 strongestEligibleAlly() 参照)。 -->
+    <button type="button" id="bossChallengeBtn">
+      <span><span class="e">👑</span>ボスに ちょうせん<small id="bossChallengeHint">レベル3いじょうの なかまが ひつよう</small></span>
+    </button>
     <div class="partyGrid" id="partyGrid"></div>
   </section>
 
@@ -872,6 +907,8 @@
       <h1>バトル</h1>
       <span class="pill coin">🐚 <b class="coinNum">0</b></span>
     </div>
+    <!-- タスク28: ボス戦の ときだけ 表示する とくべつ感の ある 見出し。 -->
+    <p class="bossTitle" id="battleBossTitle" hidden>👑 ボスせん！ ⚔️</p>
     <div class="vs">
       <div class="fighter" id="battleAllyCard">
         <small class="growthBadge" id="battleAllyBadge"></small>
@@ -1018,6 +1055,8 @@ function statsFor(emoji) {
 const EXP_STEPS = [0, 20, 45, 80, 125, 180, 250, 330, 430, 550]; // レベル1〜10
 const EXP_WIN = 30; // バトルに かつと もらえる まとまった EXP
 const EXP_HIT = 3; // なかまの こうげきが ヒットするたびに もらえる すこしの EXP
+const EXP_WIN_BOSS = EXP_WIN * 2; // タスク28: ボスに かつと もらえる EXP(2倍)
+const BOSS_COIN_BONUS = 20; // タスク28: ボスしょうり ボーナスの コイン
 const GROWTH_MILESTONES = [3, 6, 9]; // 成長演出(バッジ)が つく レベル
 function expFor(emoji) {
   return state.partyExp[emoji] || 0;
@@ -1069,6 +1108,22 @@ function battleStatsFor(emoji) {
   const base = finalStatsFor(emoji);
   const bonus = equippedGearBonus();
   return { hp: base.hp, atk: base.atk + bonus.atk, def: base.def + bonus.def, spd: base.spd };
+}
+
+// ============================================================
+//  タスク28: ボス戦 専用の ステータス算出。
+//  statsFor()と おなじ 決定論的ハッシュ方式を つかいつつ、HP×2・
+//  こうげき/ぼうぎょ×1.3倍で 通常のてき(ENEMIES)より 明確に つよくする。
+//  statsFor()自体は かえない(新しい並列ロジックを つくらず、うわがさねする)。
+// ============================================================
+function bossStatsFor(emoji) {
+  const base = statsFor(emoji);
+  return {
+    hp: Math.round(base.hp * 2),
+    atk: Math.round(base.atk * 1.3),
+    def: Math.round(base.def * 1.3),
+    spd: base.spd,
+  };
 }
 // 成長演出: 節目(3・6・9)に とどいた レベルに おうじた バッジ文字。
 // 新しい画像は つくらず、既存の絵文字を かさねるだけ。
@@ -1705,6 +1760,8 @@ const STICKERS = ["🐳", "🐋", "🐬", "🦭", "🐟", "🐠", "🐡", "🦈"
   "🦐", "🦞", "🦀", "🐚", "🪸", "🪼", "🐢", "🐧", "🦦", "🦪"];
 // タスク22: バトルの あいて専用。STICKERSとは かぶらない 生き物。
 const ENEMIES = ["👹", "🐉", "🦂", "🕷️", "👾", "🦇", "🐺", "🐍", "🦖", "🧌"];
+// タスク28: ボス戦 専用の てき。ENEMIES/STICKERS/EQUIP_ITEMSとも かぶらない 絵文字。
+const BOSSES = ["👺", "🦍", "🐊", "🦣", "🦬"];
 const NAMES = { count: "かず", add: "たしざん", subtract: "ひきざん", kana: "ひらがな", more: "どっち？", color: "いろ",
   multiply: "かけざん", divide: "わりざん", clock: "とけい", map: "ちず", detailmap: "くわしい ちず", fish: "うみのいきもの" };
 
@@ -2371,7 +2428,7 @@ const gameStage = () => $("game").querySelector(".stage");
 
 function startGame(key) {
   game = { key, index: 0, ok: 0, ng: 0, stars: 0, combo: 0, earned: 0, missed: false, locked: false, input: "", q: null };
-  gameStage().classList.remove("fever");
+  gameStage().classList.remove("fever", "bossfight");
   // タスク22: ふつうの もんだい(バトルでない)では HPバーを かくす。
   // バトルの ときは beginBattleRound()が この あとで game.battle を つけ、
   // バーを ひょうじする。
@@ -2503,6 +2560,9 @@ function judge(ok, btn) {
     // 上の せいかい演出(sfx.correctChain()等)は そのまま のこし、その あとに
     // バトル専用の処理を つけたすだけ(新しい並列の採点ロジックは つくらない)。
     if (game.battle && !game.battle.over) battleAttack(game.battle.ally, game.battle.enemy);
+    // タスク28: ボス戦は なかまの こうげきが あたる たびに(フィーバーでなくても)
+    // bigFlash()(タスク24)を 鳴らし、通常バトルより 演出を 頻繁/派手にする。
+    if (game.battle && game.battle.isBoss && game.combo !== 3) bigFlash();
     setTimeout(() => {
       if (game.battle) {
         if (!game.battle.over) {
@@ -2549,26 +2609,48 @@ function finish() {
   // ここだけ 分岐させる(新しい通貨・新しい演出ライブラリは つくらない)。
   if (game.battle) {
     const win = !!game.battle.win;
+    const isBoss = !!game.battle.isBoss;
     // タスク26: バトルに かつと、たたかった なかまに まとまった EXPを あげる。
     // 既存の かち/まけ判定(上の game.battle.win)は いじらず、EXP加算だけを足す。
+    // タスク28: ボス戦に かつと 2倍の EXP(EXP_WIN_BOSS)に する(addPartyExp()は
+    // そのまま つかい、あたえる量だけ 変える)。
     let battleGrowth = null;
-    if (win && game.battle.ally) battleGrowth = addPartyExp(game.battle.ally.emoji, EXP_WIN);
+    if (win && game.battle.ally) battleGrowth = addPartyExp(game.battle.ally.emoji, isBoss ? EXP_WIN_BOSS : EXP_WIN);
     const sticker = pick(STICKERS);
     state.stickers.push(sticker); store.set("mk.stickers", state.stickers);
+    // タスク28: ボスを たおすと、通常バトルより ごうかな ほうしゅうに する
+    // (コインおおめ・シールおまけ・未所持の ぶき/ぼうぐが あれば 1つ もらえる)。
+    // 新しい通貨は つくらず、既存の コイン(state.coins)・シール(state.stickers)・
+    // そうび所持(state.ownedEquip)の しくみを そのまま つかう。
+    let bossRewardLine = "";
+    if (win && isBoss) {
+      state.coins += BOSS_COIN_BONUS; store.set("mk.coins", state.coins);
+      const bonusSticker = pick(STICKERS);
+      state.stickers.push(bonusSticker); store.set("mk.stickers", state.stickers);
+      const unowned = EQUIP_ITEMS.filter((i) => !state.ownedEquip.includes(i.id));
+      let gearLine = "";
+      if (unowned.length > 0) {
+        const gear = pick(unowned);
+        state.ownedEquip.push(gear.id); store.set("mk.ownedEquip", state.ownedEquip);
+        gearLine = `<br>${gear.emoji} 「${gear.name}」を ゲット！(そうびで そうびしよう)`;
+      }
+      bossRewardLine = `<br>👑 ボスしょうり ボーナス！ 🐚 +${BOSS_COIN_BONUS}　シール ${bonusSticker} +1${gearLine}`;
+    }
     $("stars").innerHTML = Array.from({ length: ROUND }, (_, i) =>
       `<span class="${i < game.stars ? "" : "off"}" style="animation-delay:${0.3 + i * 0.15}s">★</span>`).join("");
     $("prize").textContent = sticker;
     // タスク26: かったときは EXP/レベルの けっかも けっか画面に 足す。
     const growthLine = battleGrowth
-      ? `<br>${game.battle.ally.emoji} けいけんち +${EXP_WIN}${battleGrowth.leveledUp ? `　Lvあっぷ！ Lv${battleGrowth.after}${battleGrowth.hitMilestone ? " " + growthBadge(battleGrowth.after) : ""}` : ""}`
+      ? `<br>${game.battle.ally.emoji} けいけんち +${isBoss ? EXP_WIN_BOSS : EXP_WIN}${battleGrowth.leveledUp ? `　Lvあっぷ！ Lv${battleGrowth.after}${battleGrowth.hitMilestone ? " " + growthBadge(battleGrowth.after) : ""}` : ""}`
       : "";
-    $("earnText").innerHTML = `${win ? "バトル かち！" : "バトル まけちゃった…"}<br>シール ゲット！<br>🐚 +${game.earned}${growthLine}`;
+    const titleLine = isBoss ? (win ? "👑 ボスせん かち！" : "ボスせん まけちゃった…") : (win ? "バトル かち！" : "バトル まけちゃった…");
+    $("earnText").innerHTML = `${titleLine}<br>シール ゲット！<br>🐚 +${game.earned}${growthLine}${bossRewardLine}`;
     show("result");
     renderHud();
     stage.classList.toggle("fever", win);
     if (battleGrowth && battleGrowth.hitMilestone) growthFlash(game.battle.ally.emoji);
     setTimeout(() => {
-      banner(stage, win ? "かち！" : "まけちゃった…", win);
+      banner(stage, win ? (isBoss ? "ボスとうは！" : "かち！") : "まけちゃった…", win);
       mood(stage, win ? "happy" : "sad", win);
       if (win && !reduced) {
         stage.classList.remove("perfectRing"); void stage.offsetWidth; stage.classList.add("perfectRing");
@@ -2578,11 +2660,15 @@ function finish() {
           setTimeout(() => hero.classList.remove("superjump"), 1300);
         }
         bigFlash();
+        // タスク28: ボスしょうりは さらに もう1回 フラッシュして ごうかさを 出す。
+        if (isBoss) setTimeout(bigFlash, 400);
       }
     }, 100);
-    confetti(win ? 90 : 30, win);
+    confetti(win ? (isBoss ? 150 : 90) : 30, win);
     win ? sfx.perfect() : sfx.ng();
-    speak(win ? "バトル かち！ すごいね！ シールを どうぞ！" : "ざんねん、バトルは まけちゃった。シールを どうぞ！ また ちょうせんしよう！", "praise");
+    speak(win
+      ? (isBoss ? "ボスせん かち！ すごいね！ とくべつな ほうしゅうを どうぞ！" : "バトル かち！ すごいね！ シールを どうぞ！")
+      : (isBoss ? "ざんねん、ボスには まけちゃった。また レベルを あげて ちょうせんしよう！" : "ざんねん、バトルは まけちゃった。シールを どうぞ！ また ちょうせんしよう！"), "praise");
     return;
   }
   const perfect = game.stars === ROUND;
@@ -2674,19 +2760,58 @@ function openParty() {
       btn.addEventListener("click", () => { sfx.tap(); openBattle(btn.dataset.emoji); });
     });
   }
+  // タスク28: ボス戦に ちょうせんできる なかまが いるか どうかで、
+  // 「ボスに ちょうせん」ボタンの ひょうじを 切りかえる。
+  const bossBtn = $("bossChallengeBtn");
+  if (bossBtn) {
+    const eligible = strongestEligibleAlly();
+    bossBtn.classList.toggle("locked", !eligible);
+    const hint = $("bossChallengeHint");
+    if (hint) hint.textContent = eligible ? `${eligible} で ちょうせん！` : "レベル3いじょうの なかまが ひつよう";
+  }
   show("party");
 }
 // なかま一覧で なかまを タップしたら、ランダムな あいてを きめて バトル画面へ
 function openBattle(allyEmoji) {
   const enemyEmoji = pick(ENEMIES);
-  battleSetup = { allyEmoji, enemyEmoji };
+  battleSetup = { allyEmoji, enemyEmoji, isBoss: false };
   renderBattleSetup();
   show("battle");
   speak(`${allyEmoji} たい ${enemyEmoji}！ どの もんだいで たたかうか えらんでね`);
 }
+// タスク28: ボス戦の ちょうせん条件を みたす なかまの うち、いちばん
+// レベルの たかい ものを かえす(いなければ null)。条件: レベル3いじょう
+// (理由は STATUS.mdの直近のログ参照。タスク26の成長演出の節目(Lv3)と
+// あわせ、「育てて から ちょうせんする」実感を もたせるため)。
+function strongestEligibleAlly() {
+  let best = null, bestLv = -1;
+  state.party.forEach((emoji) => {
+    const lv = levelForEmoji(emoji);
+    if (lv >= 3 && lv > bestLv) { bestLv = lv; best = emoji; }
+  });
+  return best;
+}
+// タスク28: 「ボスに ちょうせん」ボタンから、いちばん つよい なかまで
+// ランダムな BOSSES の てきに ちょうせんする。既存のopenBattle()と
+// ほぼ同じ流れだが、isBoss:trueを つける点だけが ちがう。
+function openBossBattle() {
+  const allyEmoji = strongestEligibleAlly();
+  if (!allyEmoji) {
+    sfx.ng();
+    speak("レベル3いじょうの なかまが いないよ。バトルで そだててから チャレンジしてね");
+    return;
+  }
+  const enemyEmoji = pick(BOSSES);
+  battleSetup = { allyEmoji, enemyEmoji, isBoss: true };
+  renderBattleSetup();
+  show("battle");
+  speak(`ボスせん！ ${allyEmoji} たい ${enemyEmoji}！ どの もんだいで たたかうか えらんでね`);
+}
 function renderBattleSetup() {
   if (!battleSetup) return;
-  const ally = battleStatsFor(battleSetup.allyEmoji), enemy = statsFor(battleSetup.enemyEmoji);
+  const isBoss = !!battleSetup.isBoss;
+  const ally = battleStatsFor(battleSetup.allyEmoji);
+  const enemy = isBoss ? bossStatsFor(battleSetup.enemyEmoji) : statsFor(battleSetup.enemyEmoji);
   const allyLv = levelForEmoji(battleSetup.allyEmoji);
   const badge = growthBadge(allyLv);
   $("battleAllyEmoji").textContent = battleSetup.allyEmoji;
@@ -2703,22 +2828,31 @@ function renderBattleSetup() {
   $("battleAllyExpFill").style.width = `${Math.round(expProgress(expFor(battleSetup.allyEmoji)) * 100)}%`;
   $("battleAllyBadge").textContent = badge;
   $("battleAllyCard").classList.toggle("grown", !!badge);
+  // タスク28: ボス戦の とくべつ感(見出し・いろ)。
+  $("battle").classList.toggle("bossfight", isBoss);
+  const bossTitle = $("battleBossTitle");
+  if (bossTitle) bossTitle.hidden = !isBoss;
 }
 // バトル画面で もんだいの しゅるいを タップしたら、じっさいに その問題で
 // プレイを はじめる。既存の startGame()を そのまま つかい、game.battle を
 // あとから つけたすだけ(新しい並列の採点ロジックは つくらない)。
 function beginBattleRound(key) {
   if (!battleSetup) return;
-  const allyStats = battleStatsFor(battleSetup.allyEmoji), enemyStats = statsFor(battleSetup.enemyEmoji);
+  const isBoss = !!battleSetup.isBoss;
+  const allyStats = battleStatsFor(battleSetup.allyEmoji);
+  const enemyStats = isBoss ? bossStatsFor(battleSetup.enemyEmoji) : statsFor(battleSetup.enemyEmoji);
   startGame(key);
   game.battle = {
     ally: { emoji: battleSetup.allyEmoji, stats: allyStats, hp: allyStats.hp, maxHp: allyStats.hp },
     enemy: { emoji: battleSetup.enemyEmoji, stats: enemyStats, hp: enemyStats.hp, maxHp: enemyStats.hp },
-    over: false, win: false,
+    over: false, win: false, isBoss,
   };
   $("gbAllyEmoji").textContent = battleSetup.allyEmoji;
   $("gbEnemyEmoji").textContent = battleSetup.enemyEmoji;
   $("battleBars").hidden = false;
+  // タスク28: ボス戦中は クイズ画面の .stage に bossfight クラスを つけ、
+  // LEDチェイス(タスク24)を つねに流す等の とくべつな 見た目にする。
+  gameStage().classList.toggle("bossfight", isBoss);
   renderBattleBars();
 }
 function renderBattleBars() {
@@ -3126,6 +3260,8 @@ $("puzzleHomeBtn").addEventListener("click", () => { sfx.tap(); show("home"); })
 $("partyBtn").addEventListener("click", () => { sfx.tap(); openParty(); });
 $("partyBack").addEventListener("click", () => show("home"));
 $("battleBack").addEventListener("click", () => show("party"));
+// タスク28: ボス戦への いりぐち。
+$("bossChallengeBtn").addEventListener("click", () => { sfx.tap(); openBossBattle(); });
 // タスク27: そうび画面(ぶき・ぼうぐ・かいふくアイテム)
 $("armoryBtn").addEventListener("click", () => { sfx.tap(); show("armory"); });
 $("armoryBack").addEventListener("click", () => show("home"));
