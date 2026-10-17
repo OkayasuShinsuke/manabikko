@@ -1323,6 +1323,19 @@ const sfx = {
     chord(659, 0, 0.22, "triangle", 0.13); chord(880, 0.18, 0.22, "triangle", 0.13);
     chord(1175, 0.36, 0.4, "square", 0.1);
   },
+  // せいかい時の riser→ok→coin は、もともと意図的に かさねて 鳴らす
+  // 1つの ひとまとまりの演出。「後勝ち」は sfx.xxx() の 呼び出し単位で
+  // 打ち切るので、riser()/ok()/coin() を べつべつに 呼ぶと たがいに
+  // 打ち切り合ってしまう。1回の呼び出しに まとめ、各メソッドの 中身を
+  // そのまま（タイミングも変えず）呼ぶことで、せいかい音を まるごと
+  // 1つの 世代として あつかう（this.xxx()で呼ぶと ラップ後の 関数経由に
+  // なり世代が別々に 進んでしまうため、あえて 直接 呼ばない）。
+  correctChain() {
+    const n = 14;
+    for (let i = 0; i < n; i++) tone(300 + i * (650 / n), i * 0.025, 0.022, "square", 0.055);
+    tone(784, 0, 0.12); tone(988, 0.09, 0.12); tone(1319, 0.18, 0.3);
+    for (let i = 0; i < 4; i++) { tone(1568, 0.25 + i * 0.09, 0.07, "square", 0.05); tone(2093, 0.29 + i * 0.09, 0.12, "square", 0.05); }
+  },
 };
 // sfx の各メソッドを薄くラップして「後勝ち」を実現する。打ち切り単位は
 // sfx.xxx() の呼び出し単位（＝ここで世代を進めるタイミング）であり、
@@ -2114,7 +2127,7 @@ function judge(ok, btn) {
     const [x, y] = centerOf($("card"));
     burst(x, y, fever ? 36 : 20);
     floatText(x, y - 20, `+${gain}`);
-    sfx.riser(); sfx.ok(); sfx.coin();
+    sfx.correctChain(); // タスク23: riser+ok+coinを1つの世代として鳴らす(互いに打ち切らない)
     bumpCoins();
     mood(stage, "happy", true);
     // 正解の たびに ステージが ふるえる。コンボが あがるほど ふるえが おおきくなる
